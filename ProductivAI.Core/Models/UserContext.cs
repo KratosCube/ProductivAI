@@ -8,7 +8,7 @@ namespace ProductivAI.Core.Models
         public string WorkDescription { get; set; }
         public List<string> FocusAreas { get; set; } = new List<string>();
         public List<string> LongTermGoals { get; set; } = new List<string>();
-        public string PreferredAIModel { get; set; } = "Son35";
+        public string PreferredAIModel { get; set; } = "qwen/qwq-32b:free";
         public TaskSortPreference SortPreference { get; set; } = TaskSortPreference.DueDate;
         public bool UseReasoning { get; set; } = true; // Add this property
     }

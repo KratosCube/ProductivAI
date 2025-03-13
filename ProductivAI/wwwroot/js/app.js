@@ -93,11 +93,7 @@ window.productivAIInterop = {
     }
 };
 // Scroll chat messages to bottom
-window.scrollToEnd = function (element) {
-    if (element) {
-        element.scrollTop = element.scrollHeight;
-    }
-};
+
 
 // Resize textarea based on content
 window.resizeTextArea = function (textAreaElement) {
@@ -112,18 +108,33 @@ window.productivAIInterop = {
     // Register keyboard shortcuts
     registerShortcuts: function (dotNetReference) {
         document.addEventListener('keydown', function (event) {
+            // Skip shortcuts if typing in an input, textarea, or contentEditable element
+            if (event.target.tagName === 'INPUT' ||
+                event.target.tagName === 'TEXTAREA' ||
+                event.target.isContentEditable) {
+                return;
+            }
+
+            // Skip shortcuts if modifiers are pressed
+            if (event.ctrlKey || event.altKey || event.metaKey) {
+                return;
+            }
+
             // 'Q' for quick create
-            if (event.key === 'q' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+            if (event.key === 'q' || event.key === 'Q') {
+                event.preventDefault();
                 dotNetReference.invokeMethodAsync('HandleQuickCreateShortcut');
             }
 
             // 'S' for settings
-            if (event.key === 's' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+            if (event.key === 's' || event.key === 'S') {
+                event.preventDefault();
                 dotNetReference.invokeMethodAsync('HandleSettingsShortcut');
             }
 
             // 'C' for completed tasks
-            if (event.key === 'c' && !event.ctrlKey && !event.altKey && !event.metaKey) {
+            if (event.key === 'c' || event.key === 'C') {
+                event.preventDefault();
                 dotNetReference.invokeMethodAsync('HandleCompletedTasksShortcut');
             }
         });
