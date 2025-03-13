@@ -10,7 +10,6 @@ using Microsoft.JSInterop;
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
-
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
 
 // Register repositories
@@ -34,7 +33,7 @@ builder.Services.AddScoped<IAIService>(sp =>
 builder.Services.AddScoped<OpenRouterAIService>(sp =>
     new OpenRouterAIService(
         sp.GetRequiredService<HttpClient>(),
-        "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",  // Replace with your key
+        "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",  // Replace with your key
         sp.GetRequiredService<IJSRuntime>(),
         "Son35",
         "ProductivAI"
