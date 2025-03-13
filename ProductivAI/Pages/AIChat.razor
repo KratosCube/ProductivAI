@@ -1,0 +1,470 @@
+﻿@page "/chat"
+@using ProductivAI.Core.Models
+@using ProductivAI.Core.Interfaces
+@using ProductivAI.AIServices
+@using Microsoft.JSInterop
+@using System.Threading
+@inject OpenRouterAIService AIService
+@inject IJSRuntime JSRuntime
+
+<div class="fixed-height-chat">
+    <!-- Chat Header (stays fixed) -->
+    <div class="chat-header" style="height: 80px; min-height: 80px;">
+        <div class="flex items-center justify-between p-4 border-b bg-white">
+            <h2 class="text-xl font-semibold">AI Assistant</h2>
+            <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm text-gray-500">Model:</span>
+                    <select id="modelSelector" class="form-select border rounded px-2 py-1" @bind="selectedModel" disabled="@isStreaming">
+                        <option value="qwen32b">Qwen 32B</option>
+                        <option value="Son35">Claude 3 Sonnet</option>
+                        <option value="Son35-opus">Claude 3 Opus</option>
+                        <option value="Son35-haiku">Claude 3 Haiku</option>
+                        <option value="llama3">Llama 3</option>
+                        <option value="mixtral">Mixtral 8x7B</option>
+                        <option value="o3mini">GPT 3.5 Turbo</option>
+                    </select>
+                </div>
+                <div class="flex items-center ml-2">
+                    <input type="checkbox" id="useReasoning" class="mr-1" @bind="useReasoning" disabled="@isStreaming" />
+                    <label for="useReasoning" class="text-sm text-gray-500">Use reasoning</label>
+                </div>
+                <div class="flex items-center ml-2">
+                    <input type="checkbox" id="showReasoning" class="mr-1" @bind="showReasoning" disabled="@(!useReasoning)" />
+                    <label for="showReasoning" class="text-sm text-gray-500">Show reasoning</label>
+                </div>
+                <button id="clearChat" class="border rounded p-2" title="Clear Chat" @onclick="ClearChat" disabled="@isStreaming">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 6h18"></path>
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Messages (scrollable area) -->
+    <div id="chatMessages" class="chat-messages-scrollable" @ref="chatMessagesElement">
+        @if (!messages.Any())
+        {
+                <div class="empty-chat">
+                    <div class="empty-chat-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                        </svg>
+                    </div>
+                    <h3 class="text-xl font-medium mb-2">AI Assistant</h3>
+                    <p class="text-gray-500 text-center max-w-md mb-6">
+                        Ask me anything about your tasks and notes, or how I can help you be more productive.
+                    </p>
+                    <div class="suggested-prompts">
+                            <button class='btn btn-outline-primary' @onclick='() => SendSuggestedPrompt("What tasks should I prioritize today?")'>
+        What tasks should I prioritize today?
+    </button>
+    <button class='btn btn-outline-primary' @onclick='() => SendSuggestedPrompt("Help me organize my notes on project planning.")'>
+        Help me organize my notes on project planning.
+    </button>
+    <button class='btn btn-outline-primary' @onclick='() => SendSuggestedPrompt("Create a weekly review template for me.")'>
+        Create a weekly review template for me.
+    </button>
+                    </div>
+                </div>
+        }
+        else
+        {
+            @foreach (var message in messages)
+            {
+                        <div class="message @(message.IsFromUser ? "user-message" : "ai-message") flex gap-4 p-6">
+                            <div class="flex-shrink-0">
+                                <div class="avatar-icon @(message.IsFromUser ? "user-avatar" : "ai-avatar") flex items-center justify-center w-8 h-8 rounded-full">
+                            @if (message.IsFromUser)
+                            {
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                            }
+                            else
+                            {
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="9" x2="9" y2="21"></line><line x1="15" y1="9" x2="15" y2="21"></line></svg>
+                            }
+                                </div>
+                            </div>
+                            <div class="flex-1 space-y-2 overflow-hidden">
+                                <div class="text-sm font-medium">
+                            @(message.IsFromUser ? "You" : "AI Assistant")
+                                </div>
+
+                        @if (!message.IsFromUser && message.HasReasoning && showReasoning)
+                        {
+                                        <div class="text-balance whitespace-pre-wrap break-words bg-amber-50 p-3 rounded-md border border-amber-200 mb-3">
+                                            <div class="text-xs text-amber-700 font-semibold mb-1">Reasoning:</div>
+                                @((MarkupString)FormatMessageContent(message.ReasoningContent))
+                                        </div>
+                        }
+
+                                <div class="text-balance whitespace-pre-wrap break-words">
+                            @((MarkupString)FormatMessageContent(message.Content))
+                                </div>
+                            </div>
+                        </div>
+            }
+
+            @if (isStreaming)
+            {
+                        <div class="message ai-message flex gap-4 p-6">
+                            <div class="flex-shrink-0">
+                                <div class="avatar-icon ai-avatar flex items-center justify-center w-8 h-8 rounded-full">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="9" x2="9" y2="21"></line><line x1="15" y1="9" x2="15" y2="21"></line></svg>
+                                </div>
+                            </div>
+                            <div class="flex-1 space-y-2 overflow-hidden">
+                                <div class="text-sm font-medium">
+                                    AI Assistant
+                                </div>
+
+                        @if (useReasoning && showReasoning && !string.IsNullOrEmpty(currentReasoningContent))
+                        {
+                                        <div class="text-balance whitespace-pre-wrap break-words bg-amber-50 p-3 rounded-md border border-amber-200 mb-3">
+                                            <div class="text-xs text-amber-700 font-semibold mb-1">Reasoning:</div>
+                                @((MarkupString)FormatMessageContent(currentReasoningContent))
+                                        </div>
+                        }
+
+                                <div class="text-balance whitespace-pre-wrap break-words">
+                            @((MarkupString)FormatMessageContent(currentStreamedContent))
+                                    <div class="typing-indicator inline-flex items-center h-4 mt-1 ml-1">
+                                        <span></span>
+                                        <span></span>
+                                        <span></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+            }
+        }
+    </div>
+
+    <!-- Chat Input (stays fixed at bottom) -->
+    <div class="chat-input-container" style="height: 80px; min-height: 80px;">
+        <div class="p-4 border-t bg-white">
+            <div class="relative flex items-center w-full bg-white rounded-lg border px-3 py-2 shadow-sm focus-within:ring-1 focus-within:ring-blue-500">
+                <textarea 
+                    @bind="currentMessage" 
+                    @bind:event="oninput"
+                    @onkeydown="HandleKeyDown"
+                    placeholder="Ask your AI assistant..."
+                    class="min-h-10 max-h-32 resize-none border-0 bg-transparent p-0 focus:outline-none w-full"
+                    rows="1"
+                    disabled="@isStreaming"
+                    @ref="textAreaRef">
+                </textarea>
+                <button 
+                    class="ml-2 h-8 w-8 shrink-0 rounded-full bg-blue-500 text-white flex items-center justify-center disabled:opacity-50"
+                    @onclick="SendMessageAsync"
+                    disabled="@(string.IsNullOrWhiteSpace(currentMessage) || isStreaming)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<ChatMessage> messages = new List<ChatMessage>();
+    private List<MessageHistory> conversationHistory = new List<MessageHistory>();
+    private string currentMessage = "";
+    private bool isStreaming = false;
+    private string currentStreamedContent = "";
+    private string currentReasoningContent = "";
+    private string selectedModel = "qwen32b";
+    private bool useReasoning = true;
+    private bool showReasoning = true;
+    private ElementReference chatMessagesElement;
+    private ElementReference textAreaRef;
+    private CancellationTokenSource cts;
+    private DotNetObjectReference<CallbackHandler> callbackReference;
+    private UserContext userContext = new UserContext
+        {
+            WorkDescription = "Developing a productivity application",
+            FocusAreas = new List<string> { "Task Management", "Note Taking", "AI Integration" },
+            LongTermGoals = new List<string> { "Build a seamless productivity system", "Reduce context switching", "Leverage AI for better efficiency" }
+        };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Optional: Add a welcome message
+        messages.Add(new ChatMessage
+            {
+                Content = "Hello! I'm your ProductivAI assistant. How can I help you today?",
+                IsFromUser = false
+            });
+
+        // Add to conversation history
+        conversationHistory.Add(new MessageHistory
+            {
+                Content = "Hello! I'm your ProductivAI assistant. How can I help you today?",
+                IsUserMessage = false
+            });
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ScrollToBottomAsync();
+            await ResizeTextAreaAsync();
+        }
+        else
+        {
+            await ScrollToBottomAsync();
+        }
+    }
+
+    public void Dispose()
+    {
+        cts?.Cancel();
+        cts?.Dispose();
+        callbackReference?.Dispose();
+    }
+
+    private async Task SendMessageAsync()
+    {
+        if (string.IsNullOrWhiteSpace(currentMessage) || isStreaming)
+            return;
+
+        // Add user message
+        var userInput = currentMessage.Trim();
+        var userMessage = new ChatMessage
+            {
+                Content = userInput,
+                IsFromUser = true
+            };
+
+        messages.Add(userMessage);
+
+        // Add to conversation history
+        conversationHistory.Add(new MessageHistory
+            {
+                Content = userInput,
+                IsUserMessage = true
+            });
+
+        currentMessage = "";
+        StateHasChanged();
+        await ScrollToBottomAsync();
+        await ResizeTextAreaAsync();
+
+        // Start streaming response
+        isStreaming = true;
+        currentStreamedContent = "";
+        currentReasoningContent = "";
+        StateHasChanged();
+
+        // Set up cancellation token
+        cts?.Cancel();
+        cts = new CancellationTokenSource();
+
+        // Update user context preferences
+        userContext.PreferredAIModel = selectedModel;
+        userContext.UseReasoning = useReasoning;
+
+        try
+        {
+            // Initialize reasoning parsing state
+            bool inReasoningBlock = false;
+
+            // Process with AI and stream the response
+            await AIService.ProcessQueryWithStreamingWithHistoryAsync(
+                userInput,
+                userContext,
+                conversationHistory,
+                async (token, isComplete) =>
+                {
+                    if (!isComplete)
+                    {
+                        // Parse reasoning markers if present
+                        if (token.Contains("[REASONING]"))
+                        {
+                            inReasoningBlock = true;
+                            token = token.Replace("[REASONING]", "");
+                        }
+                        else if (token.Contains("[/REASONING]"))
+                        {
+                            inReasoningBlock = false;
+                            token = token.Replace("[/REASONING]", "");
+                        }
+
+                        // Add to appropriate content stream
+                        if (inReasoningBlock)
+                        {
+                            currentReasoningContent += token;
+                        }
+                        else
+                        {
+                            currentStreamedContent += token;
+                        }
+
+                        await InvokeAsync(StateHasChanged);
+                        await InvokeAsync(ScrollToBottomAsync);
+                    }
+                    else
+                    {
+                        isStreaming = false;
+
+                        if (!string.IsNullOrEmpty(currentStreamedContent))
+                        {
+                            // Create message with both content and reasoning
+                            var aiMessage = new ChatMessage
+                                {
+                                    Content = currentStreamedContent,
+                                    IsFromUser = false,
+                                    ReasoningContent = currentReasoningContent,
+                                    HasReasoning = !string.IsNullOrEmpty(currentReasoningContent)
+                                };
+
+                            messages.Add(aiMessage);
+
+                            // Add to conversation history
+                            conversationHistory.Add(new MessageHistory
+                                {
+                                    Content = currentStreamedContent,
+                                    IsUserMessage = false,
+                                    ReasoningContent = currentReasoningContent
+                                });
+
+                            currentStreamedContent = "";
+                            currentReasoningContent = "";
+                        }
+
+                        await InvokeAsync(StateHasChanged);
+                        await InvokeAsync(ScrollToBottomAsync);
+                    }
+                },
+                cts.Token
+            );
+        }
+        catch (Exception ex)
+        {
+            // Handle error
+            isStreaming = false;
+            messages.Add(new ChatMessage
+                {
+                    Content = $"An error occurred: {ex.Message}",
+                    IsFromUser = false
+                });
+
+            StateHasChanged();
+            await ScrollToBottomAsync();
+        }
+    }
+
+    private void SendSuggestedPrompt(string prompt)
+    {
+        currentMessage = prompt;
+        StateHasChanged();
+        SendMessageAsync();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey && !string.IsNullOrWhiteSpace(currentMessage) && !isStreaming)
+        {
+            await SendMessageAsync();
+        }
+    }
+
+    private void ClearChat()
+    {
+        messages.Clear();
+        conversationHistory.Clear();
+        StateHasChanged();
+    }
+
+    private async Task ScrollToBottomAsync()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("scrollToEnd", chatMessagesElement);
+        }
+        catch
+        {
+            // Ignore errors if the element isn't rendered yet
+        }
+    }
+
+    private async Task ResizeTextAreaAsync()
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("resizeTextArea", textAreaRef);
+        }
+        catch
+        {
+            // Ignore errors
+        }
+    }
+
+    private string FormatMessageContent(string content)
+    {
+        if (string.IsNullOrEmpty(content))
+            return "";
+
+        // Simple markdown-like formatting
+        // Code blocks
+        content = System.Text.RegularExpressions.Regex.Replace(
+            content,
+            @"```(.+?)```",
+            m => $"<pre><code>{m.Groups[1].Value}</code></pre>",
+            System.Text.RegularExpressions.RegexOptions.Singleline
+        );
+
+        // Bold
+        content = System.Text.RegularExpressions.Regex.Replace(
+            content,
+            @"\*\*(.+?)\*\*",
+            "<strong>$1</strong>"
+        );
+
+        // Italic
+        content = System.Text.RegularExpressions.Regex.Replace(
+            content,
+            @"\*(.+?)\*",
+            "<em>$1</em>"
+        );
+
+        // Headers
+        content = System.Text.RegularExpressions.Regex.Replace(
+            content,
+            @"^# (.+)$",
+            "<h3>$1</h3>",
+            System.Text.RegularExpressions.RegexOptions.Multiline
+        );
+
+        content = System.Text.RegularExpressions.Regex.Replace(
+            content,
+            @"^## (.+)$",
+            "<h4>$1</h4>",
+            System.Text.RegularExpressions.RegexOptions.Multiline
+        );
+
+        // Line breaks
+        content = content.Replace("\n", "<br>");
+
+        return content;
+    }
+
+    private bool ShouldPreventEnterKey(KeyboardEventArgs e)
+    {
+        return e.Key == "Enter" && !e.ShiftKey;
+    }
+
+    private class ChatMessage
+    {
+        public string Content { get; set; }
+        public bool IsFromUser { get; set; }
+        public string ReasoningContent { get; set; }
+        public bool HasReasoning { get; set; }
+    }
+}
