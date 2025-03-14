@@ -735,7 +735,8 @@
             };
         editingTask = false;
         showNewTaskModal = true;
-        await DisableShortcutsAsync();
+        await JSRuntime.InvokeVoidAsync("shortcutsManager.setModalState", true);
+        //await DisableShortcutsAsync();
     }
 
     private void EditTask(TaskItem task)
@@ -771,7 +772,8 @@
         showSettingsModal = false;
         showUserContextModal = false;
         showCompletedTasksModal = false;
-        await EnableShortcutsAsync();
+        await JSRuntime.InvokeVoidAsync("shortcutsManager.setModalState", false);
+        //await EnableShortcutsAsync();
     }
 
     private async Task SaveTaskAsync()

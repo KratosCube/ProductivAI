@@ -917,8 +917,12 @@ pre {
     width: 100%;
     height: 100%;
     background-color: rgba(0, 0, 0, 0.7);
-    z-index: 50;
+    z-index: 1000; /* Ensure high z-index */
+    display: flex; /* Added flex for centering */
+    align-items: center;
+    justify-content: center;
 }
+
 
 .modal {
     position: fixed;
@@ -928,11 +932,15 @@ pre {
     width: 90%;
     max-width: 500px;
     background-color: var(--bg-card);
-    z-index: 51;
-    box-shadow: none;
+    z-index: 1001; /* Higher than backdrop */
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
     border: 1px solid var(--border-color);
     color: var(--text-color);
     border-radius: var(--border-radius);
+    max-height: 90vh;
+    overflow-y: auto;
+    display: block !important; /* Force display */
+    opacity: 1 !important; /* Force visibility */
 }
 
 .modal-content {

@@ -581,25 +581,44 @@ namespace ProductivAI.AIServices
                 // Finally add the current user query
                 messagesArray.Add(new { role = "user", content = query });
 
-                // Prepare request for AI model with streaming enabled
-                var requestBody = new
+                // Get model identifier
+                string modelId = GetModelIdentifier();
+
+                // Create request object with basic parameters
+                var requestObject = new Dictionary<string, object>
                 {
-                    model = GetModelIdentifier(),
-                    messages = messagesArray.ToArray(),
-                    max_tokens = 1000,
-                    temperature = 0.7,
-                    stream = true,
-                    include_reasoning = context.UseReasoning
+                    ["model"] = modelId,
+                    ["messages"] = messagesArray.ToArray(),
+                    ["max_tokens"] = 1000,
+                    ["temperature"] = 0.7,
+                    ["stream"] = true,
+                    ["include_reasoning"] = context.UseReasoning
                 };
 
+                // If using a Qwen model, update provider preferences to use Hyperbolic
+                if (modelId.Contains("qwen/qwen"))
+                {
+                    requestObject["provider"] = new Dictionary<string, object>
+                    {
+                        ["order"] = new[] { "Hyperbolic" } // Specify Hyperbolic provider
+                    };
+
+                    // Log for debugging
+                    Console.WriteLine("Using Hyperbolic provider for Qwen model");
+                }
+
                 // Create HTTP request message
-                var jsonContent = JsonSerializer.Serialize(requestBody, _jsonOptions);
+                var jsonContent = JsonSerializer.Serialize(requestObject);
                 var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
                 var request = new HttpRequestMessage(HttpMethod.Post, $"{ApiBaseUrl}/chat/completions")
                 {
                     Content = content
                 };
+
+                // Add required headers for OpenRouter
+                request.Headers.Add("HTTP-Referer", "https://productivai.app");
+                request.Headers.Add("X-Title", _appName);
 
                 // Send request and process streaming response
                 var response = await _httpClient.SendAsync(
@@ -642,9 +661,9 @@ namespace ProductivAI.AIServices
                                 var choice = choices[0];
 
                                 if (choice.TryGetProperty("delta", out var delta) &&
-                                    delta.TryGetProperty("content", out var content_token))
+                                    delta.TryGetProperty("content", out var contentToken))
                                 {
-                                    var token = content_token.GetString();
+                                    var token = contentToken.GetString();
                                     if (!string.IsNullOrEmpty(token))
                                     {
                                         // Add a small delay to make streaming more visible
@@ -672,6 +691,7 @@ namespace ProductivAI.AIServices
                 callback($"\nError: {ex.Message}", true);
             }
         }
+
         // NEW: JavaScript interop for streaming
         public async ValueTask SetupStreamingResponseInJSAsync(string query, UserContext context, DotNetObjectReference<CallbackHandler> callbackRef)
         {
@@ -713,11 +733,11 @@ namespace ProductivAI.AIServices
                 "son35-opus" => "anthropic/claude-3-opus",
                 "son35-haiku" => "anthropic/claude-3-haiku",
                 "deepseekr1" => "deepseek-ai/deepseek-coder",
-                "qwen32b" => "qwen/qwen-32b:free",
+                "qwen32b" => "qwen/qwq-32b",
                 "llama3" => "meta-llama/llama-3-8b-instruct",
                 "mixtral" => "mistralai/mixtral-8x7b-instruct",
                 "o3mini" => "openai/gpt-3.5-turbo",
-                _ => "qwen/qwen-32b:free" // Default model
+                _ => "qwen32b" // Default model
             };
         }
 
