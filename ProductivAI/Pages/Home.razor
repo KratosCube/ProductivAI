@@ -732,23 +732,12 @@
     {
         if (firstRender)
         {
-            // Register keyboard shortcuts
-            await JSRuntime.InvokeVoidAsync("shortcutsManager.registerShortcuts",
-                DotNetObjectReference.Create(this));
-
-            // Initialize textarea auto-resize
-            await JSRuntime.InvokeVoidAsync("textAreaManager.init", textAreaRef);
-            await ScrollToBottomAsync();
-            await JSRuntime.InvokeVoidAsync("setupChatScroll",
-                chatMessagesElement,
-                DotNetObjectReference.Create(this));
-            await ScrollToBottomAsync();
-        }
-        else
-        {
-            await ScrollToBottomAsync();
+            // Only set up the scroll event listener
+            await JSRuntime.InvokeVoidAsync("setupChatScroll", chatMessagesElement, DotNetObjectReference.Create(this));
         }
     }
+
+
     private async Task DisableShortcutsAsync()
     {
         await JSRuntime.InvokeVoidAsync("shortcutsManager.setTypingState", true);
@@ -1133,26 +1122,7 @@
         StateHasChanged();
     }
 
-    private async Task OnChatScroll()
-    {
-        // Check if user has scrolled up
-        var isAtBottom = await JSRuntime.InvokeAsync<bool>("isScrolledToBottom", chatMessagesElement);
 
-        // If not at bottom, show the scroll button and disable auto-scroll
-        if (!isAtBottom && !showScrollButton)
-        {
-            autoScroll = false;
-            showScrollButton = true;
-            StateHasChanged();
-        }
-        // If at bottom, hide the button and enable auto-scroll
-        else if (isAtBottom && showScrollButton)
-        {
-            autoScroll = true;
-            showScrollButton = false;
-            StateHasChanged();
-        }
-    }
 
     private async Task ScrollToBottomAsync()
     {

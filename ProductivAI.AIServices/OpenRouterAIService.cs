@@ -589,21 +589,22 @@ namespace ProductivAI.AIServices
                 {
                     ["model"] = modelId,
                     ["messages"] = messagesArray.ToArray(),
-                    ["max_tokens"] = 1000,
+                    ["max_tokens"] = 10000,
                     ["temperature"] = 0.7,
                     ["stream"] = true,
                     ["include_reasoning"] = context.UseReasoning
                 };
 
                 // If using a Qwen model, update provider preferences to use Hyperbolic
-                if (modelId.Contains("qwen/qwen"))
+                if (modelId.StartsWith("qwen/"))
                 {
                     requestObject["provider"] = new Dictionary<string, object>
                     {
-                        ["order"] = new[] { "Hyperbolic", "Parasail", "Fireworks" } // Specify Hyperbolic provider
+                        ["order"] = new[] { "Hyperbolic", "Parasail", "Fireworks" },
+                        ["allow_fallbacks"] = false
                     };
 
-                    Console.WriteLine("Using Hyperbolic provider for Qwen model");
+                    Console.WriteLine("Using specified providers for Qwen model with disabled fallbacks");
                 }
 
                 // Create HTTP request message

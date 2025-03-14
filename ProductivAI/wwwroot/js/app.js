@@ -161,12 +161,8 @@ window.scrollToEnd = function (element) {
     }
 };
 
-window.isScrolledToBottom = function (element) {
-    if (!element) return true;
 
-    const threshold = 50; // pixels from bottom to consider "at bottom"
-    return (element.scrollHeight - element.scrollTop - element.clientHeight) <= threshold;
-};
+
 
 // Add scroll event listener to chat container
 window.setupChatScroll = function (chatElement, dotNetRef) {
