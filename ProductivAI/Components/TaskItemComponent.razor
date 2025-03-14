@@ -37,15 +37,6 @@
                 </span>
             </div>
         </div>
-
-        <div class="task-actions">
-            <button class="btn btn-sm btn-outline-secondary" title="Add subtask" @onclick="HandleAddSubtask">
-                <span class="oi oi-plus"></span>
-            </button>
-            <button class="btn btn-sm btn-outline-primary" title="Edit task" @onclick="HandleEdit">
-                <span class="oi oi-pencil"></span>
-            </button>
-        </div>
     </div>
 
     @if (Task.SubTasks.Any())

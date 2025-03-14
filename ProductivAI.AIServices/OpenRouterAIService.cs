@@ -584,7 +584,7 @@ namespace ProductivAI.AIServices
                 // Get model identifier
                 string modelId = GetModelIdentifier();
 
-                // Create request object with basic parameters
+                // Create request object with basic parameters including reasoning flag
                 var requestObject = new Dictionary<string, object>
                 {
                     ["model"] = modelId,
@@ -600,10 +600,9 @@ namespace ProductivAI.AIServices
                 {
                     requestObject["provider"] = new Dictionary<string, object>
                     {
-                        ["order"] = new[] { "Hyperbolic" } // Specify Hyperbolic provider
+                        ["order"] = new[] { "Hyperbolic", "Parasail", "Fireworks" } // Specify Hyperbolic provider
                     };
 
-                    // Log for debugging
                     Console.WriteLine("Using Hyperbolic provider for Qwen model");
                 }
 
@@ -642,6 +641,9 @@ namespace ProductivAI.AIServices
                     {
                         var data = line.Substring(6);
 
+                        // Log the raw incoming JSON for debugging
+                        Console.WriteLine("Received JSON: " + data);
+
                         // Check for "[DONE]" message
                         if (data == "[DONE]")
                         {
@@ -660,15 +662,34 @@ namespace ProductivAI.AIServices
                             {
                                 var choice = choices[0];
 
-                                if (choice.TryGetProperty("delta", out var delta) &&
-                                    delta.TryGetProperty("content", out var contentToken))
+                                if (choice.TryGetProperty("delta", out var delta))
                                 {
-                                    var token = contentToken.GetString();
-                                    if (!string.IsNullOrEmpty(token))
+                                    // Process content token if it exists
+                                    if (delta.TryGetProperty("content", out var contentToken) &&
+                                       contentToken.ValueKind == JsonValueKind.String)
                                     {
-                                        // Add a small delay to make streaming more visible
-                                        await Task.Delay(10, cancellationToken);
-                                        callback(token, false);
+                                        var contentText = contentToken.GetString();
+                                        if (!string.IsNullOrEmpty(contentText))
+                                        {
+                                            // Send content token normally
+                                            await Task.Delay(10, cancellationToken);
+                                            callback(contentText, false);
+                                        }
+                                    }
+
+                                    // Process reasoning token if it exists
+                                    if (delta.TryGetProperty("reasoning", out var reasoningToken) &&
+                                        reasoningToken.ValueKind == JsonValueKind.String)
+                                    {
+                                        var reasoningText = reasoningToken.GetString();
+                                        if (!string.IsNullOrEmpty(reasoningText))
+                                        {
+                                            Console.WriteLine("Reasoning token received: " + reasoningText);
+
+                                            // Send reasoning token with special marker
+                                            await Task.Delay(10, cancellationToken);
+                                            callback("[REASONING]" + reasoningText + "[/REASONING]", false);
+                                        }
                                     }
                                 }
                             }
@@ -691,6 +712,10 @@ namespace ProductivAI.AIServices
                 callback($"\nError: {ex.Message}", true);
             }
         }
+
+
+
+
 
         // NEW: JavaScript interop for streaming
         public async ValueTask SetupStreamingResponseInJSAsync(string query, UserContext context, DotNetObjectReference<CallbackHandler> callbackRef)

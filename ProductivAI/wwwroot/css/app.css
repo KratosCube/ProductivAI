@@ -233,6 +233,7 @@ pre {
     color: #222; /* Darker text for better contrast on white */
     margin: 0;
 }
+
     .panel-header h2 {
         font-size: 1.75rem; /* Increased from 1.25rem */
         font-weight: 600;
@@ -417,6 +418,7 @@ pre {
     color: var(--bg-color);
 }
 
+
 .message-bubble {
     background-color: var(--ai-bubble-color);
     border-radius: 1rem;
@@ -426,8 +428,11 @@ pre {
     min-width: 8rem;
     border: 1px solid var(--border-color);
     color: var(--bubble-text-color);
-    margin-top: 0; /* Ensure no top margin on the bubble */
-    align-self: flex-start; /* Align to the top */
+    margin-top: 0;
+    align-self: flex-start;
+    width: auto; /* Let content determine width */
+    max-width: 100%; /* Prevent expanding beyond container */
+    box-sizing: border-box; /* Include padding in width */
 }
 
 .message-left .message-bubble {
@@ -448,32 +453,6 @@ pre {
 .message-right .message-content a {
     color: #e0f0ff;
     text-decoration: underline;
-}
-
-.reasoning-content {
-    background-color: rgba(255, 255, 255, 0.1);
-    padding: 0.75rem;
-    margin-bottom: 0.75rem;
-    border-radius: 0.5rem;
-    font-size: 0.875rem;
-    color: var(--text-secondary);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.message-right .reasoning-content {
-    background-color: rgba(0, 50, 100, 0.3);
-    color: var(--bubble-text-color);
-}
-
-.reasoning-header {
-    font-weight: bold;
-    margin-bottom: 0.25rem;
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-}
-
-.message-right .reasoning-header {
-    color: rgba(255, 255, 255, 0.8);
 }
 
 /* Format code blocks within message bubbles */
@@ -781,9 +760,11 @@ pre {
     border-radius: var(--border-radius);
     border: 1px solid var(--border-color);
 }
+
 .context-group {
     margin-bottom: 1.25rem;
 }
+
 .context-header {
     display: flex;
     justify-content: space-between;
@@ -812,6 +793,7 @@ pre {
     background-color: #d4edda;
     color: #155724;
 }
+
 .radio-group {
     display: flex;
     flex-wrap: wrap;
@@ -829,6 +811,7 @@ pre {
     .radio-label input[type="radio"] {
         accent-color: var(--text-color);
     }
+
 .tag-remove {
     background: none;
     border: none;
@@ -853,6 +836,7 @@ pre {
     background-color: #f5f5f5;
     transform: scale(1.05);
 }
+
 .btn-new-task {
     width: 40px;
     height: 40px;
@@ -872,6 +856,7 @@ pre {
         width: 20px;
         height: 20px;
     }
+
 .btn-secondary {
     padding: 0.5rem 1rem;
     background-color: var(--bg-card);
@@ -917,12 +902,8 @@ pre {
     width: 100%;
     height: 100%;
     background-color: rgba(0, 0, 0, 0.7);
-    z-index: 1000; /* Ensure high z-index */
-    display: flex; /* Added flex for centering */
-    align-items: center;
-    justify-content: center;
+    z-index: 1000;
 }
-
 
 .modal {
     position: fixed;
@@ -932,19 +913,21 @@ pre {
     width: 90%;
     max-width: 500px;
     background-color: var(--bg-card);
-    z-index: 1001; /* Higher than backdrop */
+    z-index: 1001;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
     border: 1px solid var(--border-color);
     color: var(--text-color);
     border-radius: var(--border-radius);
-    max-height: 90vh;
-    overflow-y: auto;
-    display: block !important; /* Force display */
-    opacity: 1 !important; /* Force visibility */
+    max-height: 90vh; /* Maximum height constraint */
+    height: auto; /* Let height be determined by content */
+    display: block; /* Use block to let it size naturally */
+    overflow-y: auto; /* Allow scrolling if needed */
 }
 
 .modal-content {
     width: 100%;
+    height: auto; /* Let height adjust to content */
+    background-color: var(--bg-card);
 }
 
 .modal-header {
@@ -953,21 +936,34 @@ pre {
     align-items: center;
     padding: 1rem;
     border-bottom: 1px solid var(--border-color);
+    background-color: var(--bg-card);
     color: var(--text-color);
+    position: sticky; /* Keep header visible when scrolling */
+    top: 0;
 }
+
+    .modal-header h3 {
+        color: var(--text-color);
+        margin: 0;
+        font-weight: 600;
+    }
 
 .modal-body {
     padding: 1.5rem;
+    background-color: var(--bg-card);
     color: var(--text-color);
+    height: auto; /* Let height adjust to content */
 }
 
 .modal-footer {
     display: flex;
     justify-content: flex-end;
     gap: 0.5rem;
-    padding-top: 1rem;
+    padding: 1rem;
     border-top: 1px solid var(--border-color);
-    margin-top: 1rem;
+    background-color: var(--bg-card);
+    position: sticky; /* Keep footer visible when scrolling */
+    bottom: 0;
 }
 
 .close-button {
@@ -978,6 +974,98 @@ pre {
     line-height: 1;
     color: var(--text-secondary);
 }
+
+/* Modal form elements - keep dark theme consistent */
+.modal .form-group label {
+    color: var(--text-color);
+}
+
+.modal .form-input,
+.modal .form-textarea,
+.modal .form-select {
+    background-color: var(--bg-surface);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+}
+
+    .modal .form-input:focus,
+    .modal .form-textarea:focus,
+    .modal .form-select:focus {
+        outline: none;
+        border-color: var(--text-color);
+        box-shadow: 0 0 0 1px var(--border-color);
+    }
+
+.modal .form-check {
+    color: var(--text-color);
+}
+
+    .modal .form-check input[type="checkbox"] {
+        accent-color: var(--text-color);
+    }
+
+.modal .btn-primary {
+    background-color: var(--text-color);
+    color: var(--bg-color);
+    border: none;
+}
+
+    .modal .btn-primary:hover {
+        background-color: var(--primary-dark);
+    }
+
+.modal .btn-secondary {
+    background-color: var(--bg-surface);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+}
+
+    .modal .btn-secondary:hover {
+        background-color: var(--border-color);
+    }
+
+/* Context pills in modals - maintain visibility on dark background */
+.modal .context-pill {
+    padding: 0.25rem 0.75rem;
+    border-radius: 99px;
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.modal .context-low {
+    background-color: rgba(255, 221, 221, 0.2);
+    color: #ffaaaa;
+}
+
+.modal .context-medium {
+    background-color: rgba(255, 243, 205, 0.2);
+    color: #ffe066;
+}
+
+.modal .context-high {
+    background-color: rgba(212, 237, 218, 0.2);
+    color: #a3cfbb;
+}
+
+/* Radio buttons in modals */
+.modal .radio-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 0.5rem;
+}
+
+.modal .radio-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    color: var(--text-color);
+}
+
+    .modal .radio-label input[type="radio"] {
+        accent-color: var(--text-color);
+    }
 
 /* ===== FORM STYLING ===== */
 .form-group {
@@ -1164,3 +1252,320 @@ input:checked + .slider:before {
     background-color: var(--bg-surface);
     scroll-behavior: smooth;
 }
+
+.subtasks-section {
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+    padding-top: 1rem;
+}
+
+.section-header {
+    margin-bottom: 0.75rem;
+}
+
+    .section-header h4 {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-color);
+        margin: 0;
+    }
+
+.subtasks-list {
+    margin-bottom: 1rem;
+}
+
+.subtask-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    border-radius: var(--border-radius-sm);
+    background-color: var(--bg-surface);
+    margin-bottom: 0.5rem;
+}
+
+.subtask-checkbox input {
+    accent-color: var(--text-color);
+}
+
+.subtask-content {
+    flex: 1;
+}
+
+.subtask-remove {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.25rem;
+    cursor: pointer;
+}
+
+    .subtask-remove:hover {
+        color: var(--text-color);
+    }
+
+.no-subtasks {
+    font-style: italic;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+}
+
+.add-subtask-form {
+    display: flex;
+    gap: 0.5rem;
+}
+
+    .add-subtask-form .form-input {
+        flex: 1;
+    }
+
+/* Collapsible Reasoning Styles */
+.reasoning-container {
+    margin-bottom: 0.75rem;
+    border-radius: 0.5rem;
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+    width: 100%; /* Ensure consistent width */
+    box-sizing: border-box; /* Include padding and border in width calculation */
+}
+
+    .reasoning-container.collapsed {
+        max-height: 36px;
+        overflow: hidden;
+    }
+
+    .reasoning-container.expanded {
+        max-height: none;
+        /* Remove any properties that might affect width */
+    }
+
+.reasoning-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: var(--text-secondary);
+}
+
+.reasoning-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+    .reasoning-title .typing-indicator {
+        margin: 0;
+    }
+
+.expand-button {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.reasoning-content {
+    padding: 0 0.75rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+/* Add these for right-side messages with reasoning */
+.message-right .reasoning-container {
+    background-color: rgba(0, 50, 100, 0.3);
+}
+
+.message-right .reasoning-content {
+    color: var(--bubble-text-color);
+}
+
+.message-right .reasoning-header {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* ===== MARKDOWN STYLING FOR CHAT ===== */
+.message-content h1,
+.reasoning-content h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 1rem 0 0.5rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.message-content h2,
+.reasoning-content h2 {
+    font-size: 1.3rem;
+    font-weight: 600;
+    margin: 0.9rem 0 0.5rem;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.message-content h3,
+.reasoning-content h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0.8rem 0 0.4rem;
+}
+
+.message-content h4,
+.message-content h5,
+.message-content h6,
+.reasoning-content h4,
+.reasoning-content h5,
+.reasoning-content h6 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0.7rem 0 0.4rem;
+}
+
+.message-content p,
+.reasoning-content p {
+    margin: 0.5rem 0;
+    line-height: 1.5;
+}
+
+.message-content ul,
+.message-content ol,
+.reasoning-content ul,
+.reasoning-content ol {
+    margin: 0.5rem 0 0.5rem 1.5rem;
+    line-height: 1.5;
+}
+
+.message-content ul,
+.reasoning-content ul {
+    list-style-type: disc;
+}
+
+.message-content ol,
+.reasoning-content ol {
+    list-style-type: decimal;
+}
+
+.message-content li,
+.reasoning-content li {
+    margin-bottom: 0.25rem;
+}
+
+.message-content a,
+.reasoning-content a {
+    color: #4dabf7;
+    text-decoration: underline;
+    word-break: break-word;
+}
+
+.message-content blockquote,
+.reasoning-content blockquote {
+    border-left: 3px solid var(--border-color);
+    padding-left: 0.75rem;
+    margin: 0.75rem 0;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.message-content code:not(pre code),
+.reasoning-content code:not(pre code) {
+    font-family: monospace;
+    background-color: rgba(0, 0, 0, 0.2);
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    font-size: 0.9em;
+}
+
+.message-content pre,
+.reasoning-content pre {
+    background-color: rgba(0, 0, 0, 0.3);
+    border-radius: 0.5rem;
+    padding: 0.75rem;
+    margin: 0.75rem 0;
+    overflow-x: auto;
+    border: 1px solid var(--border-color);
+}
+
+    .message-content pre code,
+    .reasoning-content pre code {
+        background-color: transparent;
+        padding: 0;
+        border-radius: 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 0.9em;
+        color: var(--text-color);
+        display: block;
+        white-space: pre;
+    }
+
+.message-content table,
+.reasoning-content table {
+    width: 100%;
+    margin: 0.75rem 0;
+    border-collapse: collapse;
+}
+
+.message-content th,
+.message-content td,
+.reasoning-content th,
+.reasoning-content td {
+    padding: 0.5rem;
+    border: 1px solid var(--border-color);
+    text-align: left;
+}
+
+.message-content th,
+.reasoning-content th {
+    background-color: rgba(255, 255, 255, 0.05);
+    font-weight: 600;
+}
+
+.message-content hr,
+.reasoning-content hr {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 1rem 0;
+}
+
+.message-content img,
+.reasoning-content img {
+    max-width: 100%;
+    border-radius: var(--border-radius);
+    margin: 0.5rem 0;
+}
+
+.scroll-bottom-button {
+    position: fixed;
+    bottom: 6rem; /* Position above chat input */
+    right: 1.5rem;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 50%;
+    background-color: var(--bg-card);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 50;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    opacity: 0;
+    transform: translateY(20px);
+}
+
+    .scroll-bottom-button.visible {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    .scroll-bottom-button:hover {
+        background-color: var(--border-color);
+    }
