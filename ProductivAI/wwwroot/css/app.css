@@ -1636,3 +1636,191 @@ input:checked + .slider:before {
         font-size: 0.75rem;
     }
 
+.task-suggestion-block {
+    background-color: rgba(30, 30, 30, 0.5);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 16px;
+    margin: 16px 0;
+}
+
+.task-suggestion-content {
+    margin: 12px 0;
+}
+
+    .task-suggestion-content h4 {
+        font-weight: 600;
+        margin-bottom: 8px;
+    }
+
+.task-action-container {
+    background-color: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 16px;
+    margin: 16px 0;
+    transition: all 0.2s ease;
+}
+
+    .task-action-container:hover {
+        border-color: rgba(255, 255, 255, 0.3);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+.task-action-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+.task-action-button {
+    background-color: #2563eb;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+    .task-action-button:hover {
+        background-color: #1d4ed8;
+    }
+.task-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-secondary);
+}
+
+.task-action-content {
+    margin-bottom: 16px;
+}
+
+    .task-action-content h4 {
+        margin-top: 0;
+        margin-bottom: 8px;
+        font-weight: 600;
+        color: var(--text-color);
+    }
+
+.task-description {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+}
+
+.task-priority {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    font-size: 14px;
+}
+
+.priority-label {
+    color: var(--text-secondary);
+}
+
+.priority-value {
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+.priority-low {
+    background-color: rgba(0, 128, 0, 0.2);
+    color: #90ee90;
+}
+
+.priority-medium {
+    background-color: rgba(255, 166, 0, 0.2);
+    color: #ffd700;
+}
+
+.priority-high {
+    background-color: rgba(255, 0, 0, 0.2);
+    color: #ff6e6e;
+}
+
+.task-action-button {
+    background-color: #2563eb;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background-color 0.2s ease;
+}
+
+    .task-action-button:hover {
+        background-color: #1d4ed8;
+    }
+
+    .task-action-button svg {
+        width: 16px;
+        height: 16px;
+    }
+
+/* Custom scrollbar styling - Black scrollbar */
+
+/* For Webkit browsers (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: #1a1a1a;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #333333;
+    border-radius: 4px;
+}
+
+    ::-webkit-scrollbar-thumb:hover {
+        background: #444444;
+    }
+
+/* For Firefox */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #333333 #1a1a1a;
+}
+
+/* For specific containers like chat messages */
+.chat-messages, .tasks-list, .modal {
+    /* Repeat the same styling for Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: #333333 #1a1a1a;
+    /* And for Webkit browsers */
+    &::-webkit-scrollbar
+
+{
+    width: 10px;
+    height: 10px;
+}
+
+&::-webkit-scrollbar-track {
+    background: #1a1a1a;
+    border-radius: 4px;
+}
+
+&::-webkit-scrollbar-thumb {
+    background: #333333;
+    border-radius: 4px;
+}
+
+    &::-webkit-scrollbar-thumb:hover {
+        background: #444444;
+    }
+}

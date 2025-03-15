@@ -562,21 +562,11 @@ namespace ProductivAI.AIServices
                 // Add task suggestion instructions to the system prompt
                 systemPrompt += @"
 
-When the user's message indicates a task or action that should be done, consider suggesting a task.
-If you identify a potential task, include a task suggestion at the end of your response using this format:
+When suggesting a task, use the following format:
+[TASK:{""title"":""Task title"",""description"":""Task details"",""priority"":3,""dueDate"":null,""subtasks"":[""Subtask 1"",""Subtask 2""]}]
 
-<task-suggestion>
-{
-  ""title"": ""Clear and specific task title"",
-  ""description"": ""Detailed description of what needs to be done"",
-  ""priority"": 3,
-  ""dueDate"": ""YYYY-MM-DD"",
-  ""subtasks"": [""First subtask"", ""Second subtask""]
-}
-</task-suggestion>
-
-Only suggest tasks when the user's message clearly implies an action item. Priority should be 1-5 (5 is highest).
-If no due date is mentioned, omit the dueDate field or set to null. Only include subtasks if the task naturally breaks down into steps.";
+For example:
+[TASK:{""title"":""Review quarterly reports"",""description"":""Go through Q1 financial reports before the meeting"",""priority"":4,""dueDate"":""2025-03-20"",""subtasks"":[""Download reports"",""Mark important sections"",""Prepare questions""]}]";
 
                 // Build messages array including conversation history
                 var messagesArray = new List<object>();
@@ -619,7 +609,7 @@ If no due date is mentioned, omit the dueDate field or set to null. Only include
                 {
                     requestObject["provider"] = new Dictionary<string, object>
                     {
-                        ["order"] = new[] { "Hyperbolic", "Parasail", "Fireworks" },
+                        ["order"] = new[] { /*"Groq",*/"Hyperbolic", "Parasail", "Fireworks" },
                         ["allow_fallbacks"] = false
                     };
 

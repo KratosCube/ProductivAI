@@ -11,6 +11,7 @@ namespace ProductivAI.Core.Models
         public string PreferredAIModel { get; set; } = "qwen/qwq-32b:free";
         public TaskSortPreference SortPreference { get; set; } = TaskSortPreference.DueDate;
         public bool UseReasoning { get; set; } = true; // Add this property
+        public string AdditionalContext { get; set; } = "";
     }
 
     public enum TaskSortPreference

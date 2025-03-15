@@ -9,6 +9,8 @@
 @using Microsoft.JSInterop
 @using System.Threading
 @using System.Text.Json
+@using System.Web
+@using System.Text.RegularExpressions
 @inject ITaskService TaskService
 @inject ITaskRepository TaskRepository
 @inject OpenRouterAIService AIService
@@ -48,53 +50,41 @@
                 {
                         <div class="messages-container">
                         @foreach (var message in messages)
-                        {
-                                    <div class="message-row @(message.IsFromUser ? "message-right" : "message-left")">
-                                        <div class="avatar-container">
-                                            <div class="avatar @(message.IsFromUser ? "user-avatar" : "ai-avatar")">
-                                        @if (message.IsFromUser)
-                                        {
-                                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                                        }
-                                        else
-                                        {
-                                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="9" x2="9" y2="21"></line><line x1="15" y1="9" x2="15" y2="21"></line></svg>
-                                        }
-                                            </div>
-                                        </div>
-                                        <div class="message-bubble">
-                                    @if (!message.IsFromUser && message.HasReasoning)
-                                    {
-                                                    <div class="reasoning-container @(reasoningExpandedStates.ContainsKey(message) && reasoningExpandedStates[message] ? "expanded" : "collapsed")" style="width: 100%; flex-shrink: 0;">
-                                                        <div class="reasoning-header" @onclick="() => ToggleMessageReasoningExpansion(message)">
-                                                            <div class="reasoning-title">
-                                                                <span>Reasoning</span>
-                                                            </div>
-                                                            <button class="expand-button">
-                                                    @if (reasoningExpandedStates.ContainsKey(message) && reasoningExpandedStates[message])
-                                                    {
-                                                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
-                                                    }
-                                                    else
-                                                    {
-                                                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                                                    }
-                                                            </button>
-                                                        </div>
-                                            @if (reasoningExpandedStates.ContainsKey(message) && reasoningExpandedStates[message])
-                                            {
-                                                                <div class="reasoning-content">
-                                                    @((MarkupString)FormatMessageContent(message.ReasoningContent))
-                                                                </div>
-                                            }
-                                                    </div>
-                                    }
-                                            <div class="message-content">
-                                        @((MarkupString)FormatMessageContent(message.Content))
-                                            </div>
-                                        </div>
-                                    </div>
-                        }
+{
+    <div class="message-row @(message.IsFromUser ? "message-right" : "message-left")">
+        <div class="avatar-container">
+            <div class="avatar @(message.IsFromUser ? "user-avatar" : "ai-avatar")">
+                @if (message.IsFromUser)
+                {
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                }
+                else
+                {
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="9" x2="9" y2="21"></line><line x1="15" y1="9" x2="15" y2="21"></line></svg>
+                }
+            </div>
+        </div>
+        <div class="message-bubble">
+            <div class="message-content">
+                @((MarkupString)FormatMessageContent(message.Content))
+            </div>
+            
+            @if (!message.IsFromUser && message == messages.Last())
+            {
+                @foreach (var task in extractedTasks)
+                {
+                    <TaskSuggestionComponent 
+                        Title="@task.Title"
+                        Description="@task.Description"
+                        Priority="@task.Priority"
+                        DueDate="@task.DueDate"
+                        Subtasks="@task.Subtasks" 
+                        OnTaskCreated="@((TaskSuggestion t) => HandleTaskCreated(t))" />
+                }
+            }
+        </div>
+    </div>
+}
 
                         @if (isStreaming)
                         {
@@ -231,7 +221,7 @@
         <div class="panel-header">
     <h2>Tasks</h2>
     <div class="flex gap-2">
-        <button class="btn-new-task" @onclick="ShowNewTaskModal" title="New Task">
+        <button class="btn-new-task" @onclick="ShowEmptyNewTaskModal" title="New Task">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
         </button>
         <button class="btn-new-task" @onclick="ShowUserContextModal" title="Edit User Context">
@@ -350,41 +340,38 @@
                         }
 
                         <!-- Subtasks Section -->
-                        @if (editingTask)
-                        {
-                                <div class="subtasks-section">
-                                    <div class="section-header">
-                                        <h4>Subtasks</h4>
-                                    </div>
+                            <div class="subtasks-section">
+                            <div class="section-header">
+                                <h4>Subtasks</h4>
+                            </div>
 
-                                @if (newTask.SubTasks.Any())
-                                {
-                                            <div class="subtasks-list">
-                                        @foreach (var subtask in newTask.SubTasks)
-                                        {
-                                                        <div class="subtask-item">
-                                                            <div class="subtask-checkbox">
-                                                                <input type="checkbox" checked="@subtask.IsCompleted" @onchange="e => subtask.IsCompleted = (bool)e.Value" />
-                                                            </div>
-                                                            <div class="subtask-content">
-                                                    @subtask.Description
-                                                            </div>
-                                                            <button type="button" class="subtask-remove" @onclick="() => RemoveSubtask(subtask)">×</button>
-                                                        </div>
-                                        }
-                                            </div>
-                                }
-                                else
-                                {
-                                            <div class="no-subtasks">No subtasks yet</div>
-                                }
-
-                                    <div class="add-subtask-form">
-                                        <input type="text" class="form-input" @bind="newSubtaskDescription" placeholder="Add a subtask..." @onkeydown="HandleSubtaskKeyDown" />
-                                        <button type="button" class="btn-primary" @onclick="AddSubtaskToCurrentTask">Add</button>
+                            @if (newTask.SubTasks.Any())
+                            {
+                                    <div class="subtasks-list">
+                                    @foreach (var subtask in newTask.SubTasks)
+                                    {
+                                                <div class="subtask-item">
+                                                    <div class="subtask-checkbox">
+                                                        <input type="checkbox" checked="@subtask.IsCompleted" @onchange="e => subtask.IsCompleted = (bool)e.Value" />
+                                                    </div>
+                                                    <div class="subtask-content">
+                                                @subtask.Description
+                                                    </div>
+                                                    <button type="button" class="subtask-remove" @onclick="() => RemoveSubtask(subtask)">×</button>
+                                                </div>
+                                    }
                                     </div>
-                                </div>
-                        }
+                            }
+                            else
+                            {
+                                    <div class="no-subtasks">No subtasks yet</div>
+                            }
+
+                            <div class="add-subtask-form">
+                                <input type="text" class="form-input" @bind="newSubtaskDescription" placeholder="Add a subtask..." @onkeydown="HandleSubtaskKeyDown" />
+                                <button type="button" class="btn-primary" @onclick="AddSubtaskToCurrentTask">Add</button>
+                            </div>
+                        </div>
 
                         <div class="modal-footer">
                             <button type="button" class="btn-secondary" @onclick="HideModal">Cancel</button>
@@ -693,7 +680,7 @@
     private bool showCompletedTasksModal = false;
     private List<TaskItem> completedTasks = new List<TaskItem>();
     private UserSettings userSettings = new UserSettings();
-
+    private List<TaskSuggestion> extractedTasks = new();
     private string shortTermFocus = ""; // Will store concatenated focus areas
     private string longTermGoals = ""; // Will store concatenated long-term goals
 
@@ -837,12 +824,44 @@
             await JSRuntime.InvokeVoidAsync("setupChatScroll",
                 chatMessagesElement,
                 DotNetObjectReference.Create(this));
-
+            await JSRuntime.InvokeVoidAsync("fixEscapedHtml");
             // Any other first render initialization...
         }
 
-        // Other existing code...
-        await ScrollToBottomAsync();
+        foreach (var entry in taskPlaceholders)
+        {
+            try
+            {
+                var placeholder = entry.Key;
+                var taskData = entry.Value;
+
+                // Get element by ID
+                var element = await JSRuntime.InvokeAsync<IJSObjectReference>("document.getElementById", placeholder);
+
+                if (element != null)
+                {
+                    // Render component into placeholder
+                    var componentInstance = new RenderFragment(builder =>
+                    {
+                        builder.OpenComponent<TaskActionButton>(0);
+                        builder.AddAttribute(1, "TaskTitle", taskData.Title);
+                        builder.AddAttribute(2, "Description", taskData.Description);
+                        builder.AddAttribute(3, "Priority", taskData.Priority);
+                        builder.AddAttribute(4, "DueDate", taskData.DueDate);
+                        builder.AddAttribute(5, "Subtasks", taskData.Subtasks);
+                        builder.AddAttribute(6, "OnTaskCreated", EventCallback.Factory.Create<TaskSuggestion>(this, HandleTaskCreated));
+                        builder.CloseComponent();
+                    });
+
+                    // Render the component
+                    await JSRuntime.InvokeVoidAsync("renderComponent", placeholder, componentInstance);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Error rendering task component: {ex.Message}");
+            }
+        }
     }
 
 
@@ -900,9 +919,62 @@
         // We need a static field to hold a reference to the component instance
         if (CurrentInstance != null)
         {
-            CurrentInstance.ShowTaskModal();
+            CurrentInstance.ShowNewTaskModal(); // Change this to call the instance method
         }
         return Task.CompletedTask;
+    }
+    [JSInvokable]
+    public static Task PrepareTaskModalFromSuggestion()
+    {
+        if (CurrentInstance != null)
+        {
+            CurrentInstance.ShowTaskModalWithSuggestion();
+        }
+        return Task.CompletedTask;
+    }
+
+    private void ShowTaskModalWithSuggestion()
+    {
+        // Use the last task suggestion if available
+        if (lastTaskSuggestion != null)
+        {
+            // Clear any previous task data
+            newTask = new TaskItem
+                {
+                    Title = lastTaskSuggestion.Title,
+                    Description = lastTaskSuggestion.Description ?? "",
+                    Priority = lastTaskSuggestion.Priority,
+                    DueDate = lastTaskSuggestion.DueDate,
+                    SubTasks = new List<SubTask>() // Start with empty subtasks
+                };
+
+            // Add subtasks if available
+            if (lastTaskSuggestion.Subtasks != null)
+            {
+                foreach (var subtask in lastTaskSuggestion.Subtasks)
+                {
+                    newTask.SubTasks.Add(new SubTask
+                        {
+                            Description = subtask,
+                            IsCompleted = false
+                        });
+                }
+            }
+        }
+        else
+        {
+            // If no suggestion data is available, provide a default empty task
+            newTask = new TaskItem
+                {
+                    Priority = 3,
+                    SubTasks = new List<SubTask>()
+                };
+        }
+
+        // Show the modal for user review - DON'T save yet
+        editingTask = false;
+        showNewTaskModal = true;
+        StateHasChanged();
     }
     private async Task LoadTasksAsync()
     {
@@ -978,17 +1050,125 @@
 
         StateHasChanged();
     }
-
-    private async Task ShowNewTaskModal()
+    private string ProcessTaskMarkers(string content)
     {
-        newTask = new TaskItem
+        if (string.IsNullOrEmpty(content))
+            return content;
+
+        // Use regex to find task markers with pattern: [TASK:{...}]
+        var regex = new Regex(@"\[TASK:(\{.*?\})\]", RegexOptions.Singleline);
+        var matches = regex.Matches(content);
+
+        foreach (Match match in matches)
+        {
+            try
             {
-                Priority = 3 // Default priority
-            };
+                // Extract the JSON content
+                var json = match.Groups[1].Value;
+                var taskData = JsonSerializer.Deserialize<TaskSuggestion>(
+                    json,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                );
+
+                if (taskData != null)
+                {
+                    // Store for later use
+                    lastTaskSuggestion = taskData;
+
+                    // Create direct HTML replacement
+                    var buttonHtml = $@"
+                <div class=""task-suggestion-block"">
+                    <p>I've identified a potential task in our conversation:</p>
+                    <div class=""task-suggestion-content"">
+                        <h4>{HttpUtility.HtmlEncode(taskData.Title)}</h4>
+                        <p>Priority: {taskData.Priority}/5</p>
+                    </div>
+                    <button class=""task-action-button"" onclick=""window.createTaskFromSuggestion()"">
+                        View and Create Task
+                    </button>
+                </div>";
+
+                    // Replace the task marker with HTML
+                    content = content.Replace(match.Value, buttonHtml);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error processing task marker: {ex.Message}");
+            }
+        }
+
+        return content;
+    }
+    private void ShowNewTaskModal()
+    {
+        // Check if we have a task suggestion to use
+        if (lastTaskSuggestion != null)
+        {
+            newTask = new TaskItem
+                {
+                    Title = lastTaskSuggestion.Title,
+                    Description = lastTaskSuggestion.Description ?? "",
+                    Priority = lastTaskSuggestion.Priority,
+                    DueDate = lastTaskSuggestion.DueDate
+                };
+
+            // Add subtasks if available
+            newTask.SubTasks.Clear();
+            if (lastTaskSuggestion.Subtasks != null)
+            {
+                foreach (var subtask in lastTaskSuggestion.Subtasks)
+                {
+                    newTask.SubTasks.Add(new SubTask
+                        {
+                            Description = subtask,
+                            IsCompleted = false
+                        });
+                }
+            }
+
+            // Clear the suggestion to prevent reuse
+            lastTaskSuggestion = null;
+        }
+        else
+        {
+            // Create a fresh new task with defaults
+            newTask = new TaskItem
+                {
+                    Title = "",
+                    Description = "",
+                    Priority = 3,
+                    DueDate = null,
+                    IsRecurring = false,
+                    RecurrencePattern = null,
+                    SubTasks = new List<SubTask>()
+                };
+        }
+
+        // Make sure subtask description is cleared too
+        newSubtaskDescription = "";
+
         editingTask = false;
         showNewTaskModal = true;
-        // Comment out these lines temporarily
-        await JSRuntime.InvokeVoidAsync("shortcutsManager.setModalState", true);
+        StateHasChanged();
+    }
+    private void ShowEmptyNewTaskModal()
+    {
+        // Always create a fresh new task with defaults
+        newTask = new TaskItem
+            {
+                Title = "",
+                Description = "",
+                Priority = 3,
+                DueDate = null,
+                IsRecurring = false,
+                RecurrencePattern = null,
+                SubTasks = new List<SubTask>()
+            };
+
+        newSubtaskDescription = "";
+        editingTask = false;
+        showNewTaskModal = true;
         StateHasChanged();
     }
 
@@ -1039,14 +1219,25 @@
             }
             else
             {
-                await TaskService.CreateTaskAsync(
+                // Only create task when user clicks Save
+                var createdTask = await TaskService.CreateTaskAsync(
                     newTask.Title,
                     newTask.Description,
                     newTask.DueDate,
                     newTask.Priority
                 );
+
+                // Add subtasks if any
+                if (newTask.SubTasks.Any())
+                {
+                    foreach (var subtask in newTask.SubTasks)
+                    {
+                        await TaskService.AddSubTaskAsync(createdTask.Id, subtask.Description);
+                    }
+                }
             }
 
+            // Clear and hide modal
             HideModal();
             await LoadTasksAsync();
         }
@@ -1123,6 +1314,11 @@
     }
     private async Task SendMessageAsync()
     {
+        var currentDate = DateTime.Now;
+        var dateInfo = $"Current date: {currentDate:yyyy-MM-dd}. Today is {currentDate.DayOfWeek}.";
+
+        // Update userContext with this information
+        userContext.AdditionalContext = dateInfo;
         if (string.IsNullOrWhiteSpace(currentMessage) || isStreaming)
             return;
 
@@ -1431,30 +1627,281 @@
             Console.Error.WriteLine($"Error resizing: {ex.Message}");
         }
     }
+    private string ProcessTaskSuggestions(string content)
+    {
+        const string taskStartTag = "<task-suggestion>";
+        const string taskEndTag = "</task-suggestion>";
 
+        while (content.Contains(taskStartTag))
+        {
+            int taskStart = content.IndexOf(taskStartTag);
+            if (taskStart < 0) break;
+
+            int taskEnd = content.IndexOf(taskEndTag, taskStart);
+            if (taskEnd <= taskStart) break;
+
+            try
+            {
+                // Extract task JSON
+                int jsonStart = taskStart + taskStartTag.Length;
+                string taskJson = content.Substring(jsonStart, taskEnd - jsonStart).Trim();
+
+                // Parse the task suggestion
+                var taskSuggestion = JsonSerializer.Deserialize<TaskSuggestion>(
+                    taskJson,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                );
+
+                if (taskSuggestion != null)
+                {
+                    // Create HTML for the task suggestion
+                    string taskId = Guid.NewGuid().ToString();
+                    string taskHtml = $@"
+                <div class=""task-suggestion-block"">
+                    <p>I've identified a potential task in our conversation:</p>
+                    <div class=""task-suggestion-content"">
+                        <h4>{System.Net.WebUtility.HtmlEncode(taskSuggestion.Title)}</h4>
+                        <p>Priority: {taskSuggestion.Priority}/5</p>
+                    </div>
+                    <button class=""task-action-button"" onclick=""window.createTaskFromSuggestion()"">
+                        View and Create Task
+                    </button>
+                </div>";
+
+                    // Store the suggestion for later use
+                    lastTaskSuggestion = taskSuggestion;
+
+                    // Replace the task suggestion with our HTML
+                    string beforeTask = content.Substring(0, taskStart);
+                    string afterTask = content.Substring(taskEnd + taskEndTag.Length);
+                    content = beforeTask + taskHtml + afterTask;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error parsing task: {ex.Message}");
+
+                // Remove the problematic tag
+                string beforeTask = content.Substring(0, taskStart);
+                string afterTask = content.Substring(taskEnd + taskEndTag.Length);
+                content = beforeTask + afterTask;
+            }
+        }
+
+        return content;
+    }
     private string FormatMessageContent(string content)
     {
         if (string.IsNullOrEmpty(content))
             return "";
 
-        // Process task suggestions first
-        content = ProcessMessageContent(content);
+        // Extract tasks from the message
+        extractedTasks.Clear();
+        content = ExtractTasks(content);
 
-        // Configure Markdig with minimal settings
+        // Process with markdown
         var pipeline = new MarkdownPipelineBuilder()
             .UseAdvancedExtensions()
-            .DisableHtml()
             .Build();
 
-        // Convert markdown to HTML
         string html = Markdown.ToHtml(content, pipeline);
+        return html;
+    }
+    private string ExtractTasks(string content)
+    {
+        // Find and extract task data
+        var taskPattern = @"\[TASK:(\{.*?\})\]";
+        var matches = Regex.Matches(content, taskPattern, RegexOptions.Singleline);
 
-        // Clean up any problematic patterns
-        html = System.Text.RegularExpressions.Regex.Replace(html, @"<p>\s*</p>", "");
+        foreach (Match match in matches)
+        {
+            if (match.Success && match.Groups.Count > 1)
+            {
+                try
+                {
+                    var jsonStr = match.Groups[1].Value;
+                    var taskData = JsonSerializer.Deserialize<TaskSuggestion>(
+                        jsonStr,
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                    );
+
+                    if (taskData != null)
+                    {
+                        // Add to extracted tasks collection
+                        extractedTasks.Add(taskData);
+
+                        // Remove the task marker from content
+                        content = content.Replace(match.Value, "");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error extracting task: {ex.Message}");
+                }
+            }
+        }
+
+        return content;
+    }
+    private string ProcessTaskMarkersAfterMarkdown(string html)
+    {
+        // Find text that matches [TASK:{...}] pattern
+        return Regex.Replace(
+            html,
+            @"\[TASK:(\{.*?\})\]",
+            match =>
+            {
+                try
+                {
+                    var json = match.Groups[1].Value;
+                    var taskData = JsonSerializer.Deserialize<TaskSuggestion>(
+                        json,
+                        new JsonSerializerOptions
+                            {
+                                PropertyNameCaseInsensitive = true
+                            }
+                    );
+
+                    if (taskData != null)
+                    {
+                        lastTaskSuggestion = taskData;
+
+                        return $@"
+                    <div class=""task-suggestion-block"">
+                        <p>I've identified a potential task:</p>
+                        <div class=""task-suggestion-content"">
+                            <h4>{HttpUtility.HtmlEncode(taskData.Title)}</h4>
+                            <p>Priority: {taskData.Priority}/5</p>
+                        </div>
+                        <button class=""task-action-button"" onclick=""window.createTaskFromSuggestion()"">
+                            Create Task
+                        </button>
+                    </div>";
+                    }
+                    return match.Value;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error processing task marker: {ex.Message}");
+                    return match.Value;
+                }
+            },
+            RegexOptions.Singleline
+        );
+    }
+    // Add a dictionary to track task placeholders
+    private Dictionary<string, TaskSuggestion> taskPlaceholders = new Dictionary<string, TaskSuggestion>();
+
+    // Add a method to handle task creation from the component
+    private async Task HandleTaskCreated(TaskSuggestion suggestion)
+    {
+        // Create the task
+        var task = new TaskItem
+            {
+                Title = suggestion.Title,
+                Description = suggestion.Description,
+                Priority = suggestion.Priority,
+                DueDate = suggestion.DueDate
+            };
+
+        // Create and store new task
+        var createdTask = await TaskService.CreateTaskAsync(
+            task.Title,
+            task.Description,
+            task.DueDate,
+            task.Priority
+        );
+
+        // Add subtasks if available
+        if (suggestion.Subtasks?.Any() == true)
+        {
+            foreach (var subtask in suggestion.Subtasks)
+            {
+                await TaskService.AddSubTaskAsync(createdTask.Id, subtask);
+            }
+        }
+
+        // Add confirmation message
+        var confirmation = $"✅ Created task: \"{task.Title}\"";
+
+        messages.Add(new ChatMessage
+            {
+                Content = confirmation,
+                IsFromUser = false
+            });
+
+        conversationHistory.Add(new MessageHistory
+            {
+                Content = confirmation,
+                IsUserMessage = false,
+                Timestamp = DateTime.Now
+            });
+
+        await ConversationService.SaveActiveConversationAsync(conversationHistory);
+
+        // Refresh tasks list
+        await LoadTasksAsync();
+    }
+    private string ProcessTaskSuggestionsInHtml(string html)
+    {
+        const string taskStartTag = "<task-suggestion>";
+        const string taskEndTag = "</task-suggestion>";
+
+        while (html.Contains(taskStartTag))
+        {
+            int taskStart = html.IndexOf(taskStartTag);
+            if (taskStart < 0) break;
+
+            int taskEnd = html.IndexOf(taskEndTag, taskStart);
+            if (taskEnd <= taskStart) break;
+
+            try
+            {
+                // Extract the JSON content
+                int jsonStart = taskStart + taskStartTag.Length;
+                string taskJson = html.Substring(jsonStart, taskEnd - jsonStart).Trim();
+
+                // Parse the task data
+                var taskSuggestion = JsonSerializer.Deserialize<TaskSuggestion>(
+                    taskJson,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                );
+
+                if (taskSuggestion != null)
+                {
+                    // Store for later use
+                    lastTaskSuggestion = taskSuggestion;
+
+                    // Create direct HTML (no markdown processing)
+                    string buttonHtml = $@"
+                <div class=""task-suggestion-block"">
+                    <p>I've identified a potential task in our conversation:</p>
+                    <div class=""task-suggestion-content"">
+                        <h4>{HttpUtility.HtmlEncode(taskSuggestion.Title)}</h4>
+                        <p>Priority: {taskSuggestion.Priority}/5</p>
+                    </div>
+                    <button class=""task-action-button"" onclick=""window.createTaskFromSuggestion()"">
+                        View and Create Task
+                    </button>
+                </div>";
+
+                    // Replace the tag with our HTML
+                    string beforeTask = html.Substring(0, taskStart);
+                    string afterTask = html.Substring(taskEnd + taskEndTag.Length);
+                    html = beforeTask + buttonHtml + afterTask;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error processing task suggestion: {ex.Message}");
+                string beforeTask = html.Substring(0, taskStart);
+                string afterTask = html.Substring(taskEnd + taskEndTag.Length);
+                html = beforeTask + afterTask;
+            }
+        }
 
         return html;
     }
-
     private async Task ReactivateTaskAsync(TaskItem task)
     {
         try
@@ -1480,68 +1927,63 @@
         const string taskStartTag = "<task-suggestion>";
         const string taskEndTag = "</task-suggestion>";
 
-        int taskStart = content.IndexOf(taskStartTag);
-        if (taskStart >= 0)
+        // Keep processing until all task suggestion tags are handled
+        while (content.Contains(taskStartTag))
         {
+            int taskStart = content.IndexOf(taskStartTag);
+            if (taskStart < 0) break;
+
             int taskEnd = content.IndexOf(taskEndTag, taskStart);
-            if (taskEnd > taskStart)
+            if (taskEnd <= taskStart) break;
+
+            try
             {
-                try
+                // Extract the task JSON
+                int jsonStart = taskStart + taskStartTag.Length;
+                string taskJson = content.Substring(jsonStart, taskEnd - jsonStart).Trim();
+
+                // Parse the task data
+                var taskSuggestion = JsonSerializer.Deserialize<TaskSuggestion>(
+                    taskJson,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                );
+
+                if (taskSuggestion != null)
                 {
-                    // Extract the task JSON
-                    int jsonStart = taskStart + taskStartTag.Length;
-                    string taskJson = content.Substring(jsonStart, taskEnd - jsonStart).Trim();
+                    // Generate a unique ID for this task suggestion
+                    string taskId = Guid.NewGuid().ToString();
 
-                    // Parse the task data
-                    var taskSuggestion = JsonSerializer.Deserialize<TaskSuggestion>(
-                        taskJson,
-                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-                    );
+                    // Store the task data for later use (you need to implement this storage)
+                    lastTaskSuggestion = taskSuggestion;
+                    lastTaskSuggestionId = taskId;
 
-                    if (taskSuggestion != null)
-                    {
-                        // Store the task data for later use - important to save it to a global variable 
-                        lastTaskSuggestion = taskSuggestion;
+                    // Create the HTML replacement - use single quotes for attribute values to avoid issues
+                    string taskHtml = $@"
+<div class=""task-suggestion-block"">
+    <p>I've identified a potential task in our conversation:</p>
+    <div class=""task-suggestion-content"">
+        <h4>{HttpUtility.HtmlEncode(taskSuggestion.Title)}</h4>
+        <p>Priority: {taskSuggestion.Priority}/5</p>
+    </div>
+    <button class=""task-action-button"" onclick=""window.createTaskFromSuggestion()"">
+        View and Create Task
+    </button>
+</div>";
 
-                        // Remove the task suggestion block from the message
-                        string beforeTask = content.Substring(0, taskStart);
-                        string afterTask = content.Substring(taskEnd + taskEndTag.Length);
-
-                        // Instead of trying to use javascript, add a data attribute that we can use for event handling
-                        string taskHtml = "<div class=\"task-suggestion-block\">" +
-                            "<p>I've identified a potential task in our conversation:</p>" +
-                            "<div class=\"task-suggestion-content\">" +
-                            $"<h4>{taskSuggestion.Title}</h4>";
-
-                        if (taskSuggestion.DueDate.HasValue)
-                        {
-                            taskHtml += $"<p>Due: {taskSuggestion.DueDate.Value.ToShortDateString()}</p>";
-                        }
-
-                        if (taskSuggestion.Priority > 0)
-                        {
-                            taskHtml += $"<p>Priority: {taskSuggestion.Priority}/5</p>";
-                        }
-
-                        // Add a "View and Create Task" button using a Blazor component
-                        taskHtml += "</div>" +
-                            "<div class=\"task-action-button\" data-task-id=\"" + lastTaskSuggestionId + "\">" +
-                            "View and Create Task" +
-                            "</div>" +
-                            "</div>";
-
-                        return beforeTask + taskHtml + afterTask;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error parsing task suggestion: {ex.Message}");
-
-                    // Remove the invalid task block
+                    // Remove the original tag and insert the HTML
                     string beforeTask = content.Substring(0, taskStart);
                     string afterTask = content.Substring(taskEnd + taskEndTag.Length);
-                    return beforeTask + afterTask;
+                    content = beforeTask + taskHtml + afterTask;
                 }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error parsing task suggestion: {ex.Message}");
+
+                // Remove the invalid task block
+                string beforeTask = content.Substring(0, taskStart);
+                string afterTask = content.Substring(taskEnd + taskEndTag.Length);
+                content = beforeTask + afterTask;
             }
         }
 
@@ -1616,7 +2058,34 @@
 
     // Methods for handling focus areas
 
+    [JSInvokable]
+    public async Task OnChatScroll() // Ensure this name matches what JS is calling
+    {
+        try
+        {
+            // Check if user has scrolled up
+            var isAtBottom = await JSRuntime.InvokeAsync<bool>("isScrolledToBottom", chatMessagesElement);
 
+            // If not at bottom, show the scroll button and disable auto-scroll
+            if (!isAtBottom && !showScrollButton)
+            {
+                autoScroll = false;
+                showScrollButton = true;
+                StateHasChanged();
+            }
+            // If at bottom, hide the button and enable auto-scroll
+            else if (isAtBottom && showScrollButton)
+            {
+                autoScroll = true;
+                showScrollButton = false;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error handling scroll: {ex.Message}");
+        }
+    }
 
 
     // Methods for handling long-term goals
@@ -1669,7 +2138,7 @@
         // Close the modal
         showUserContextModal = false;
     }
-
+    [JSInvokable]
     private async Task HandleChatScroll()
     {
         try

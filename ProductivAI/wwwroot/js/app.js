@@ -9,30 +9,30 @@ window.productivAIInterop = {
             xhr.setRequestHeader("Authorization", "Bearer " + apiKey);
             xhr.setRequestHeader("HTTP-Referer", "https://productivai.app");
             xhr.setRequestHeader("X-Title", "ProductivAI");
-            
+
             // Handle streaming response
-            xhr.onreadystatechange = function() {
+            xhr.onreadystatechange = function () {
                 // Process partial data as it arrives (readyState 3)
                 if (xhr.readyState === 3) {
                     let newData = xhr.responseText;
-                    
+
                     // Split response into lines
                     const lines = newData.split('\n');
                     for (const line of lines) {
                         if (line.startsWith('data: ')) {
                             const data = line.substring(6);
-                            
+
                             // Check for stream end
                             if (data === '[DONE]') {
                                 dotNetHandler.invokeMethodAsync('OnComplete');
                                 continue;
                             }
-                            
+
                             try {
                                 const jsonData = JSON.parse(data);
                                 if (jsonData.choices && jsonData.choices.length > 0) {
                                     const choice = jsonData.choices[0];
-                                    
+
                                     // Extract content from delta (streaming response)
                                     if (choice.delta && choice.delta.content) {
                                         dotNetHandler.invokeMethodAsync('OnToken', choice.delta.content);
@@ -52,15 +52,15 @@ window.productivAIInterop = {
                     }
                 }
             };
-            
+
             // Handle network errors
-            xhr.onerror = function() {
+            xhr.onerror = function () {
                 dotNetHandler.invokeMethodAsync('OnError', 'Network error occurred');
             };
-            
+
             // Send the request
             xhr.send(requestBody);
-            
+
             // Return an ID that could be used for cleanup
             return Date.now().toString();
         } catch (error) {
@@ -68,43 +68,7 @@ window.productivAIInterop = {
             return null;
         }
     },
-    
-    // Register keyboard shortcuts
-    registerShortcuts: function (dotNetReference) {
-        document.addEventListener('keydown', function(event) {
-            // 'Q' for quick create
-            if (event.key === 'q' && !event.ctrlKey && !event.altKey && !event.metaKey) {
-                dotNetReference.invokeMethodAsync('HandleQuickCreateShortcut');
-            }
-            
-            // 'S' for settings
-            if (event.key === 's' && !event.ctrlKey && !event.altKey && !event.metaKey) {
-                dotNetReference.invokeMethodAsync('HandleSettingsShortcut');
-            }
-            
-            // 'C' for completed tasks
-            if (event.key === 'c' && !event.ctrlKey && !event.altKey && !event.metaKey) {
-                dotNetReference.invokeMethodAsync('HandleCompletedTasksShortcut');
-            }
-        });
-        
-        // Return true to indicate successful registration
-        return true;
-    }
-};
-// Scroll chat messages to bottom
 
-
-// Resize textarea based on content
-window.resizeTextArea = function (textAreaElement) {
-    if (textAreaElement) {
-        textAreaElement.style.height = 'auto';
-        textAreaElement.style.height = textAreaElement.scrollHeight + 'px';
-    }
-};
-
-// Register keyboard shortcuts
-window.productivAIInterop = {
     // Register keyboard shortcuts
     registerShortcuts: function (dotNetReference) {
         document.addEventListener('keydown', function (event) {
@@ -143,6 +107,31 @@ window.productivAIInterop = {
         return true;
     }
 };
+// Add this function to find and fix escaped HTML
+window.fixEscapedHtml = function () {
+    // Find all elements that might contain escaped HTML task buttons
+    const messageContents = document.querySelectorAll('.message-content');
+
+    messageContents.forEach(element => {
+        // Look for escaped HTML task buttons
+        if (element.innerHTML.includes('&lt;div class="task-suggestion-block"&gt;')) {
+            // Unescape the HTML
+            element.innerHTML = element.innerHTML
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .replace(/&amp;/g, '&');
+        }
+    });
+};
+// Resize textarea based on content
+window.resizeTextArea = function (textAreaElement) {
+    if (textAreaElement) {
+        textAreaElement.style.height = 'auto';
+        textAreaElement.style.height = textAreaElement.scrollHeight + 'px';
+    }
+};
+
 window.setupTextAreaEnterKey = function (textAreaElement) {
     if (textAreaElement) {
         textAreaElement.addEventListener('keydown', function (e) {
@@ -155,25 +144,24 @@ window.setupTextAreaEnterKey = function (textAreaElement) {
         });
     }
 };
+
 window.scrollToEnd = function (element) {
     if (element) {
         element.scrollTop = element.scrollHeight;
     }
 };
 
-
-
-
 // Add scroll event listener to chat container
+// Change from HandleChatScroll to match your C# method name
 window.setupChatScroll = function (chatElement, dotNetRef) {
     if (!chatElement) return;
 
     chatElement.addEventListener('scroll', function () {
-        dotNetRef.invokeMethodAsync('OnChatScroll');
+        dotNetRef.invokeMethodAsync('HandleChatScroll');
     });
 };
 
-// Add to your app.js file
+// Fix markdown spacing issues
 window.fixMarkdownSpacing = function (elementId) {
     const element = document.getElementById(elementId);
     if (!element) return;
@@ -193,16 +181,7 @@ window.fixMarkdownSpacing = function (elementId) {
     }
 };
 
-// Add scroll event listener to chat container
-window.setupChatScroll = function (chatElement, dotNetRef) {
-    if (!chatElement) return;
-
-    chatElement.addEventListener('scroll', function () {
-        dotNetRef.invokeMethodAsync('OnChatScroll');
-    });
-};
-
-// Also add this helper function if it doesn't exist
+// Check if element is scrolled to bottom
 window.isScrolledToBottom = function (element) {
     if (!element) return true;
 
@@ -210,14 +189,23 @@ window.isScrolledToBottom = function (element) {
     return (element.scrollHeight - element.scrollTop - element.clientHeight) <= tolerance;
 };
 
+// Task suggestion handling
 window.createTaskFromSuggestion = function () {
-    // Get the DotNet reference from the window
-    // In app.js
-    window.createTaskFromSuggestion = function () {
-        DotNet.invokeMethodAsync('ProductivAI', 'ShowTaskSuggestionModal');
-    };
+    DotNet.invokeMethodAsync('ProductivAI', 'PrepareTaskModalFromSuggestion');
 };
-// Add to app.js or create a new js file and include it in index.html
+
+// Also add event delegation for dynamically added buttons
+document.addEventListener('click', function (e) {
+    if (e.target.classList.contains('task-action-button')) {
+        console.log("Task button clicked via delegation!");
+        window.createTaskFromSuggestion();
+    }
+});
+window.createTask = function (taskId) {
+    console.log("Creating task with ID: " + taskId);
+    DotNet.invokeMethodAsync('ProductivAI', 'CreateTaskFromJS', taskId);
+};
+// Task helpers
 window.taskHelpers = {
     // Store a reference to the .NET component
     dotNetReference: null,
@@ -225,14 +213,11 @@ window.taskHelpers = {
     // Set the reference
     setDotnetReference: function (reference) {
         window.taskHelpers.dotNetReference = reference;
-    },
-
-    // Create task from suggestion
-    createTaskFromSuggestion: function () {
-        if (window.taskHelpers.dotNetReference) {
-            window.taskHelpers.dotNetReference.invokeMethodAsync('ShowTaskSuggestionModal');
-        } else {
-            console.error("DotNet reference not set");
-        }
     }
+};
+
+// For task button click handling
+window.createTaskFromSuggestion = function () {
+    console.log("Task button clicked!");
+    DotNet.invokeMethodAsync('ProductivAI', 'ShowTaskModal');
 };
