@@ -556,8 +556,27 @@ namespace ProductivAI.AIServices
 
             try
             {
-                // Construct system prompt with user context
+                // Construct enhanced system prompt with task suggestion capability
                 var systemPrompt = ConstructSystemPromptFromContext(context);
+
+                // Add task suggestion instructions to the system prompt
+                systemPrompt += @"
+
+When the user's message indicates a task or action that should be done, consider suggesting a task.
+If you identify a potential task, include a task suggestion at the end of your response using this format:
+
+<task-suggestion>
+{
+  ""title"": ""Clear and specific task title"",
+  ""description"": ""Detailed description of what needs to be done"",
+  ""priority"": 3,
+  ""dueDate"": ""YYYY-MM-DD"",
+  ""subtasks"": [""First subtask"", ""Second subtask""]
+}
+</task-suggestion>
+
+Only suggest tasks when the user's message clearly implies an action item. Priority should be 1-5 (5 is highest).
+If no due date is mentioned, omit the dueDate field or set to null. Only include subtasks if the task naturally breaks down into steps.";
 
                 // Build messages array including conversation history
                 var messagesArray = new List<object>();
@@ -1009,7 +1028,32 @@ namespace ProductivAI.AIServices
                 return null;
             }
         }
+        private string GetEnhancedSystemPrompt(UserContext context, bool includeTaskSuggestions = true)
+        {
+            var basePrompt = ConstructSystemPromptFromContext(context);
 
+            if (includeTaskSuggestions)
+            {
+                basePrompt += @"
+
+You can suggest tasks when the user's message indicates something that should be done or remembered.
+When suggesting a task, add a special task suggestion block at the end of your response using this format:
+
+<task-suggestion>
+{
+  ""title"": ""Clear task title"",
+  ""description"": ""Detailed description of what needs to be done"",
+  ""priority"": 3,
+  ""dueDate"": ""YYYY-MM-DD"",
+  ""subtasks"": [""First subtask"", ""Second subtask""]
+}
+</task-suggestion>
+
+Only add this when the user's message clearly implies an action or task. Focus on creating practical, actionable tasks.";
+            }
+
+            return basePrompt;
+        }
         private string ParseCommandResult(string responseJson)
         {
             try
@@ -1100,6 +1144,8 @@ namespace ProductivAI.AIServices
                 return null;
             }
         }
+
+
 
         #endregion
     }

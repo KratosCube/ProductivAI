@@ -8,11 +8,13 @@
 @using ProductivAI.AIServices
 @using Microsoft.JSInterop
 @using System.Threading
+@using System.Text.Json
 @inject ITaskService TaskService
 @inject ITaskRepository TaskRepository
 @inject OpenRouterAIService AIService
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
+@inject IConversationService ConversationService
 
 <div class="dashboard-container">
     <div class="dashboard-content">      
@@ -211,6 +213,13 @@
                     <button class="btn-icon" @onclick="ClearChat" disabled="@isStreaming">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
                     </button>
+                    <button class="btn-icon" @onclick="EndAndArchiveConversation" disabled="@(isStreaming || isEndingConversation)">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        </svg>
+        End & Archive
+    </button>
                 </div>
             </div>
         </div>
@@ -608,6 +617,46 @@
             </div>
         </div>
     }
+    @if (showRelevantConversations)
+    {
+        <div class="modal-backdrop"></div>
+        <div class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Related Past Conversations</h3>
+                    <button class="close-button" @onclick="() => showRelevantConversations = false">×</button>
+                </div>
+                <div class="modal-body">
+                    <p>I found previous conversations that might be relevant:</p>
+                    <div class="conversation-list">
+                        @foreach (var conv in relevantConversations)
+                        {
+                                <div class="conversation-item">
+                                    <div class="conversation-title">@conv.Title</div>
+                                    <div class="conversation-date">@conv.CreatedDate.ToShortDateString()</div>
+                                    <div class="conversation-summary">@conv.Summary</div>
+                                    <div class="conversation-tags">
+                                    @foreach (var tag in conv.Tags)
+                                    {
+                                                <span class="tag">@tag</span>
+                                    }
+                                    </div>
+                                    <button class="btn-primary" @onclick="() => ReferencePastConversation(conv)">
+                                        Reference This
+                                    </button>
+                                </div>
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" @onclick="() => showRelevantConversations = false">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
 
 </div>
 
@@ -648,6 +697,14 @@
     private string shortTermFocus = ""; // Will store concatenated focus areas
     private string longTermGoals = ""; // Will store concatenated long-term goals
 
+    // For task detection
+    private Dictionary<int, TaskDetectionResult> taskSuggestions = new Dictionary<int, TaskDetectionResult>();
+    private TaskItem taskFromMessage = new TaskItem();
+
+    private TaskItem taskFromSuggestion = new TaskItem();
+    private bool showTaskFromSuggestionModal = false;
+    private bool showTaskCreationModal = false;
+    private int currentTaskMessageIndex = -1;
 
      private bool autoScroll = true;
     private bool showScrollButton = false;
@@ -665,20 +722,55 @@
     // Combined lifecycle methods
     protected override async Task OnInitializedAsync()
     {
-        await LoadTasksAsync();
+        // Load existing conversation if any
+        var savedHistory = await ConversationService.LoadActiveConversationAsync();
 
-        // Add a welcome message to chat
+        if (savedHistory != null && savedHistory.Any())
+        {
+            // Debug output to help diagnose issues
+            Console.WriteLine($"Loaded {savedHistory.Count} messages from storage");
+            foreach (var msg in savedHistory)
+            {
+                Console.WriteLine($"Message: {(msg.IsUserMessage ? "User" : "AI")}: {msg.Content.Substring(0, Math.Min(20, msg.Content.Length))}...");
+            }
+
+            conversationHistory = savedHistory;
+
+            // Rebuild UI messages from history
+            messages = conversationHistory.Select(m => new ChatMessage
+                {
+                    Content = m.Content,
+                    IsFromUser = m.IsUserMessage,
+                    ReasoningContent = m.ReasoningContent,
+                    HasReasoning = !string.IsNullOrEmpty(m.ReasoningContent)
+                }).ToList();
+
+            Console.WriteLine($"Rebuilt {messages.Count} UI messages");
+        }
+        else
+        {
+            Console.WriteLine("No saved conversation found or loading failed");
+            // Add welcome message if no history
+            AddWelcomeMessage();
+        }
+
+        await LoadTasksAsync();
+    }
+    private void AddWelcomeMessage()
+    {
+        var welcomeMessage = "Hello! I'm your ProductivAI assistant. How can I help you today?";
+
         messages.Add(new ChatMessage
             {
-                Content = "Hello! I'm your ProductivAI assistant. How can I help you today?",
+                Content = welcomeMessage,
                 IsFromUser = false
             });
 
-        // Add to conversation history
         conversationHistory.Add(new MessageHistory
             {
-                Content = "Hello! I'm your ProductivAI assistant. How can I help you today?",
-                IsUserMessage = false
+                Content = welcomeMessage,
+                IsUserMessage = false,
+                Timestamp = DateTime.Now
             });
     }
 
@@ -732,9 +824,25 @@
     {
         if (firstRender)
         {
-            // Only set up the scroll event listener
-            await JSRuntime.InvokeVoidAsync("setupChatScroll", chatMessagesElement, DotNetObjectReference.Create(this));
+            // Store a reference to this component in JavaScript
+            await JSRuntime.InvokeVoidAsync("eval", @"
+            document.addEventListener('click', function(e) {
+                if (e.target && e.target.classList.contains('task-action-button')) {
+                    DotNet.invokeMethodAsync('ProductivAI', 'ShowTaskModal');
+                }
+            });
+        ");
+
+            // Setup scroll handler 
+            await JSRuntime.InvokeVoidAsync("setupChatScroll",
+                chatMessagesElement,
+                DotNetObjectReference.Create(this));
+
+            // Any other first render initialization...
         }
+
+        // Other existing code...
+        await ScrollToBottomAsync();
     }
 
 
@@ -780,7 +888,22 @@
     }
 
     // ----- TASK MANAGEMENT METHODS -----
-
+    private static Home CurrentInstance;
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        CurrentInstance = this;
+    }
+    [JSInvokable]
+    public static Task ShowTaskModal()
+    {
+        // We need a static field to hold a reference to the component instance
+        if (CurrentInstance != null)
+        {
+            CurrentInstance.ShowTaskModal();
+        }
+        return Task.CompletedTask;
+    }
     private async Task LoadTasksAsync()
     {
         loading = true;
@@ -967,7 +1090,37 @@
     }
 
     // ----- CHAT METHODS -----
+    private void PrepareTaskSuggestion(TaskSuggestion suggestion)
+    {
+        taskFromSuggestion = new TaskItem
+            {
+                Title = suggestion.Title ?? "New Task",
+                Description = suggestion.Description ?? "",
+                Priority = suggestion.Priority,
+                DueDate = suggestion.DueDate
+            };
 
+        taskFromSuggestion.SubTasks.Clear();
+        if (suggestion.Subtasks != null)
+        {
+            foreach (var subtask in suggestion.Subtasks)
+            {
+                taskFromSuggestion.SubTasks.Add(new SubTask
+                    {
+                        Description = subtask,
+                        IsCompleted = false
+                    });
+            }
+        }
+    }
+    [JSInvokable]
+    public void ShowTaskSuggestionModal()
+    {
+        newTask = taskFromSuggestion;
+        editingTask = false;
+        showNewTaskModal = true;
+        StateHasChanged();
+    }
     private async Task SendMessageAsync()
     {
         if (string.IsNullOrWhiteSpace(currentMessage) || isStreaming)
@@ -982,13 +1135,19 @@
             };
 
         messages.Add(userMessage);
+        // After adding user message to messages list
+
 
         // Add to conversation history
         conversationHistory.Add(new MessageHistory
             {
                 Content = userInput,
-                IsUserMessage = true
+                IsUserMessage = true,
+                Timestamp = DateTime.Now // Add timestamp
             });
+
+        // Save after adding user message
+        await ConversationService.SaveActiveConversationAsync(conversationHistory);
 
         // Clear input and update UI
         currentMessage = "";
@@ -1012,10 +1171,6 @@
 
         try
         {
-            // Initialize reasoning parsing state
-            bool inReasoningBlock = false;
-
-            // Process with AI and stream the response
             // Process with AI and stream the response
             await AIService.ProcessQueryWithStreamingWithHistoryAsync(
                 userInput,
@@ -1065,13 +1220,19 @@
                             messages.Add(aiMessage);
                             reasoningExpandedStates[aiMessage] = false; // Initially collapsed
 
-                            // Add to conversation history
-                            conversationHistory.Add(new MessageHistory
+                            // Add to conversation history with timestamp
+                            var historyMessage = new MessageHistory
                                 {
                                     Content = currentStreamedContent,
                                     IsUserMessage = false,
-                                    ReasoningContent = currentReasoningContent
-                                });
+                                    ReasoningContent = currentReasoningContent,
+                                    Timestamp = DateTime.Now
+                                };
+
+                            conversationHistory.Add(historyMessage);
+
+                            // CRITICAL ADDITION: Save conversation after AI response
+                            await ConversationService.SaveActiveConversationAsync(conversationHistory);
 
                             currentStreamedContent = "";
                             currentReasoningContent = "";
@@ -1088,17 +1249,129 @@
         {
             // Handle error
             isStreaming = false;
-            messages.Add(new ChatMessage
+            var errorMessage = new ChatMessage
                 {
                     Content = $"An error occurred: {ex.Message}",
                     IsFromUser = false
+                };
+
+            messages.Add(errorMessage);
+
+            // Add error to conversation history
+            conversationHistory.Add(new MessageHistory
+                {
+                    Content = errorMessage.Content,
+                    IsUserMessage = false,
+                    Timestamp = DateTime.Now
                 });
+
+            // Save conversation even when errors occur
+            await ConversationService.SaveActiveConversationAsync(conversationHistory);
 
             StateHasChanged();
             await ScrollToBottomAsync();
         }
     }
+    private void ShowTaskCreationModal(int messageIndex)
+    {
+        var suggestion = taskSuggestions[messageIndex];
+        currentTaskMessageIndex = messageIndex;
 
+        // Create pre-filled task
+        taskFromMessage = new TaskItem
+            {
+                Title = suggestion.SuggestedTitle,
+                Description = suggestion.SuggestedDescription,
+                Priority = suggestion.SuggestedPriority,
+                DueDate = suggestion.SuggestedDueDate
+            };
+
+        // Add suggested subtasks
+        taskFromMessage.SubTasks.Clear();
+        foreach (var subtask in suggestion.SuggestedSubTasks ?? new List<string>())
+        {
+            taskFromMessage.SubTasks.Add(new SubTask
+                {
+                    Description = subtask,
+                    IsCompleted = false
+                });
+        }
+
+        showTaskCreationModal = true;
+        StateHasChanged();
+    }
+
+    private void AddSubtaskToTaskFromMessage()
+    {
+        if (string.IsNullOrWhiteSpace(newSubtaskDescription))
+            return;
+
+        taskFromMessage.SubTasks.Add(new SubTask
+            {
+                Description = newSubtaskDescription,
+                IsCompleted = false
+            });
+
+        newSubtaskDescription = "";
+    }
+
+    private async Task CreateTaskFromMessage()
+    {
+        try
+        {
+            // Create the main task
+            var createdTask = await TaskService.CreateTaskAsync(
+                taskFromMessage.Title,
+                taskFromMessage.Description,
+                taskFromMessage.DueDate,
+                taskFromMessage.Priority
+            );
+
+            // Add subtasks
+            if (taskFromMessage.SubTasks.Any())
+            {
+                foreach (var subtask in taskFromMessage.SubTasks)
+                {
+                    await TaskService.AddSubTaskAsync(createdTask.Id, subtask.Description);
+                }
+            }
+
+            // Remove the suggestion to prevent duplicate creation
+            taskSuggestions.Remove(currentTaskMessageIndex);
+
+            // Add confirmation message to chat
+            var confirmation = $"✅ Created task: \"{taskFromMessage.Title}\"";
+            if (taskFromMessage.DueDate.HasValue)
+            {
+                confirmation += $" due {taskFromMessage.DueDate.Value.ToShortDateString()}";
+            }
+
+            // Add to conversation
+            conversationHistory.Add(new MessageHistory
+                {
+                    Content = confirmation,
+                    IsUserMessage = false,
+                    Timestamp = DateTime.Now
+                });
+
+            messages.Add(new ChatMessage
+                {
+                    Content = confirmation,
+                    IsFromUser = false
+                });
+
+            await ConversationService.SaveActiveConversationAsync(conversationHistory);
+
+            // Close modal
+            showTaskCreationModal = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            // Handle errors
+            Console.Error.WriteLine($"Error creating task: {ex.Message}");
+        }
+    }
     private void SendSuggestedPrompt(string prompt)
     {
         currentMessage = prompt;
@@ -1164,13 +1437,22 @@
         if (string.IsNullOrEmpty(content))
             return "";
 
-        // Use Markdig to convert markdown to HTML
+        // Process task suggestions first
+        content = ProcessMessageContent(content);
+
+        // Configure Markdig with minimal settings
         var pipeline = new MarkdownPipelineBuilder()
             .UseAdvancedExtensions()
-            .UseSoftlineBreakAsHardlineBreak()
+            .DisableHtml()
             .Build();
 
-        return Markdown.ToHtml(content, pipeline);
+        // Convert markdown to HTML
+        string html = Markdown.ToHtml(content, pipeline);
+
+        // Clean up any problematic patterns
+        html = System.Text.RegularExpressions.Regex.Replace(html, @"<p>\s*</p>", "");
+
+        return html;
     }
 
     private async Task ReactivateTaskAsync(TaskItem task)
@@ -1185,6 +1467,85 @@
         {
             Console.Error.WriteLine($"Error reactivating task: {ex.Message}");
         }
+    }
+
+    private TaskSuggestion lastTaskSuggestion;
+    private string lastTaskSuggestionId = Guid.NewGuid().ToString();
+    private string ProcessMessageContent(string content)
+    {
+        if (string.IsNullOrEmpty(content))
+            return content;
+
+        // Look for task suggestion blocks
+        const string taskStartTag = "<task-suggestion>";
+        const string taskEndTag = "</task-suggestion>";
+
+        int taskStart = content.IndexOf(taskStartTag);
+        if (taskStart >= 0)
+        {
+            int taskEnd = content.IndexOf(taskEndTag, taskStart);
+            if (taskEnd > taskStart)
+            {
+                try
+                {
+                    // Extract the task JSON
+                    int jsonStart = taskStart + taskStartTag.Length;
+                    string taskJson = content.Substring(jsonStart, taskEnd - jsonStart).Trim();
+
+                    // Parse the task data
+                    var taskSuggestion = JsonSerializer.Deserialize<TaskSuggestion>(
+                        taskJson,
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                    );
+
+                    if (taskSuggestion != null)
+                    {
+                        // Store the task data for later use - important to save it to a global variable 
+                        lastTaskSuggestion = taskSuggestion;
+
+                        // Remove the task suggestion block from the message
+                        string beforeTask = content.Substring(0, taskStart);
+                        string afterTask = content.Substring(taskEnd + taskEndTag.Length);
+
+                        // Instead of trying to use javascript, add a data attribute that we can use for event handling
+                        string taskHtml = "<div class=\"task-suggestion-block\">" +
+                            "<p>I've identified a potential task in our conversation:</p>" +
+                            "<div class=\"task-suggestion-content\">" +
+                            $"<h4>{taskSuggestion.Title}</h4>";
+
+                        if (taskSuggestion.DueDate.HasValue)
+                        {
+                            taskHtml += $"<p>Due: {taskSuggestion.DueDate.Value.ToShortDateString()}</p>";
+                        }
+
+                        if (taskSuggestion.Priority > 0)
+                        {
+                            taskHtml += $"<p>Priority: {taskSuggestion.Priority}/5</p>";
+                        }
+
+                        // Add a "View and Create Task" button using a Blazor component
+                        taskHtml += "</div>" +
+                            "<div class=\"task-action-button\" data-task-id=\"" + lastTaskSuggestionId + "\">" +
+                            "View and Create Task" +
+                            "</div>" +
+                            "</div>";
+
+                        return beforeTask + taskHtml + afterTask;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error parsing task suggestion: {ex.Message}");
+
+                    // Remove the invalid task block
+                    string beforeTask = content.Substring(0, taskStart);
+                    string afterTask = content.Substring(taskEnd + taskEndTag.Length);
+                    return beforeTask + afterTask;
+                }
+            }
+        }
+
+        return content;
     }
 
     private async Task LoadCompletedTasksAsync()
@@ -1368,6 +1729,101 @@
         // Show completed tasks modal
         showCompletedTasksModal = true;
         await DisableShortcutsAsync();
+        StateHasChanged();
+    }
+
+    private bool isEndingConversation = false;
+    private List<ConversationSummary> relevantConversations = new List<ConversationSummary>();
+    private bool showRelevantConversations = false;
+    private async Task EndAndArchiveConversation()
+    {
+        if (isStreaming || conversationHistory.Count <= 1)
+            return;
+
+        isEndingConversation = true;
+        StateHasChanged();
+
+        try
+        {
+            // Use service to generate summary and archive
+            var summary = await ConversationService.EndAndArchiveConversationAsync(
+                conversationHistory,
+                userContext
+            );
+
+            // Clear current conversation
+            messages.Clear();
+            conversationHistory.Clear();
+
+            // Add welcome message
+            messages.Add(new ChatMessage
+                {
+                    Content = $"Previous conversation archived as \"{summary.Title}\".\nHow can I help you today?",
+                    IsFromUser = false
+                });
+
+            conversationHistory.Add(new MessageHistory
+                {
+                    Content = $"Previous conversation archived as \"{summary.Title}\".\nHow can I help you today?",
+                    IsUserMessage = false
+                });
+
+            // Save the new state
+            await ConversationService.SaveActiveConversationAsync(conversationHistory);
+        }
+        catch (Exception ex)
+        {
+            // Handle error
+            Console.Error.WriteLine($"Error archiving conversation: {ex.Message}");
+        }
+        finally
+        {
+            isEndingConversation = false;
+            StateHasChanged();
+        }
+    }
+
+    // Add method to check for relevant past conversations
+    private async Task CheckForRelevantConversations(string message)
+    {
+        // Don't check for very short messages
+        if (string.IsNullOrWhiteSpace(message) || message.Length < 10)
+            return;
+
+        // Get current task ID if focusing on a task
+        Guid? currentTaskId = null; // You would set this based on your UI state
+
+        var relevant = await ConversationService.FindRelevantConversationsAsync(message, currentTaskId);
+
+        if (relevant.Any())
+        {
+            relevantConversations = relevant;
+            showRelevantConversations = true;
+            StateHasChanged();
+        }
+    }
+
+    // Add method to reference a past conversation
+    private async Task ReferencePastConversation(ConversationSummary conversation)
+    {
+        // Add reference message to chat
+        var referenceMessage = new MessageHistory
+            {
+                Content = $"From previous conversation about \"{conversation.Title}\" ({conversation.CreatedDate.ToShortDateString()}):\n\n{conversation.Summary}",
+                IsUserMessage = false,
+                Timestamp = DateTime.Now
+            };
+
+        conversationHistory.Insert(1, referenceMessage);
+
+        messages.Insert(1, new ChatMessage
+            {
+                Content = referenceMessage.Content,
+                IsFromUser = false
+            });
+
+        await ConversationService.SaveActiveConversationAsync(conversationHistory);
+        showRelevantConversations = false;
         StateHasChanged();
     }
 

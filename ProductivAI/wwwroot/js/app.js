@@ -172,3 +172,67 @@ window.setupChatScroll = function (chatElement, dotNetRef) {
         dotNetRef.invokeMethodAsync('OnChatScroll');
     });
 };
+
+// Add to your app.js file
+window.fixMarkdownSpacing = function (elementId) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+
+    // Remove excess paragraph wrappers in lists
+    const listItems = element.querySelectorAll('li');
+    for (const item of listItems) {
+        if (item.firstElementChild && item.firstElementChild.tagName === 'P') {
+            item.innerHTML = item.firstElementChild.innerHTML;
+        }
+    }
+
+    // Fix nested list spacing
+    const nestedLists = element.querySelectorAll('li > ul, li > ol');
+    for (const list of nestedLists) {
+        list.style.margin = '0.1rem 0';
+    }
+};
+
+// Add scroll event listener to chat container
+window.setupChatScroll = function (chatElement, dotNetRef) {
+    if (!chatElement) return;
+
+    chatElement.addEventListener('scroll', function () {
+        dotNetRef.invokeMethodAsync('OnChatScroll');
+    });
+};
+
+// Also add this helper function if it doesn't exist
+window.isScrolledToBottom = function (element) {
+    if (!element) return true;
+
+    const tolerance = 50; // Pixels of tolerance
+    return (element.scrollHeight - element.scrollTop - element.clientHeight) <= tolerance;
+};
+
+window.createTaskFromSuggestion = function () {
+    // Get the DotNet reference from the window
+    // In app.js
+    window.createTaskFromSuggestion = function () {
+        DotNet.invokeMethodAsync('ProductivAI', 'ShowTaskSuggestionModal');
+    };
+};
+// Add to app.js or create a new js file and include it in index.html
+window.taskHelpers = {
+    // Store a reference to the .NET component
+    dotNetReference: null,
+
+    // Set the reference
+    setDotnetReference: function (reference) {
+        window.taskHelpers.dotNetReference = reference;
+    },
+
+    // Create task from suggestion
+    createTaskFromSuggestion: function () {
+        if (window.taskHelpers.dotNetReference) {
+            window.taskHelpers.dotNetReference.invokeMethodAsync('ShowTaskSuggestionModal');
+        } else {
+            console.error("DotNet reference not set");
+        }
+    }
+};

@@ -21,8 +21,9 @@ builder.Services.AddScoped(sp => new HttpClient
 // Register repositories
 builder.Services.AddScoped<INoteRepository, LocalStorageNoteRepository>();
 builder.Services.AddScoped<ITaskRepository, LocalStorageTaskRepository>();
+builder.Services.AddScoped<IConversationRepository, LocalStorageConversationRepository>();
 
-// Register services
+builder.Services.AddScoped<IConversationService, ConversationService>();
 builder.Services.AddScoped<INoteService, NoteService>();
 builder.Services.AddScoped<ITaskService, TaskService>();
 
@@ -30,7 +31,7 @@ builder.Services.AddScoped<ITaskService, TaskService>();
 builder.Services.AddScoped<IAIService>(sp =>
     new DefaultAIService(
         sp.GetRequiredService<HttpClient>(),
-        "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",
+        "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",
         "qwen32b"
     )
 );
@@ -40,7 +41,7 @@ builder.Services.AddScoped<IAIService>(sp =>
 builder.Services.AddScoped<OpenRouterAIService>(sp =>
     new OpenRouterAIService(
         sp.GetRequiredService<HttpClient>(),
-        "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", // This will trigger simulation mode in the service
+        "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", // This will trigger simulation mode in the service
         sp.GetRequiredService<IJSRuntime>(),
         "qwen32b",
         "ProductivAI"

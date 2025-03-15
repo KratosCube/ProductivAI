@@ -1,12 +1,21 @@
-﻿using System;
+﻿// In ProductivAI.Core/Models/MessageHistory.cs
+using System;
+using System.Text.Json.Serialization;
 
 namespace ProductivAI.Core.Models
 {
     public class MessageHistory
     {
+        [JsonPropertyName("content")]
         public string Content { get; set; }
+
+        [JsonPropertyName("isUserMessage")]
         public bool IsUserMessage { get; set; }
+
+        [JsonPropertyName("reasoningContent")]
         public string ReasoningContent { get; set; }
+
+        [JsonPropertyName("timestamp")]
         public DateTime Timestamp { get; set; } = DateTime.Now;
 
         // Utility method to convert from a UI message

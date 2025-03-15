@@ -103,6 +103,43 @@ namespace ProductivAI.AIServices
                 callback($"An error occurred: {ex.Message}", true);
             }
         }
+        // Add the same method to DefaultAIService with simplified implementation for testing
+        public async Task<TaskDetectionResult> DetectTaskInMessageAsync(string message, UserContext context)
+        {
+            // Check for task-like phrases
+            bool isTaskLike = message.Contains("need to") ||
+                              message.Contains("should") ||
+                              message.Contains("have to") ||
+                              message.Contains("must") ||
+                              message.Contains("todo") ||
+                              message.Contains("to do") ||
+                              message.Contains("task") ||
+                              message.Contains("list");
+
+            if (!isTaskLike) return new TaskDetectionResult { IsTaskLike = false };
+
+            // Basic task detection logic
+            var result = new TaskDetectionResult
+            {
+                IsTaskLike = true,
+                Confidence = 0.7,
+                SuggestedTitle = message.Length > 30 ? message.Substring(0, 30) + "..." : message,
+                SuggestedDescription = message,
+                SuggestedPriority = 3
+            };
+
+            // Simple date extraction
+            if (message.Contains("tomorrow"))
+            {
+                result.SuggestedDueDate = DateTime.Today.AddDays(1);
+            }
+            else if (message.Contains("next week"))
+            {
+                result.SuggestedDueDate = DateTime.Today.AddDays(7);
+            }
+
+            return result;
+        }
         public async Task ProcessQueryWithStreamingWithHistoryAsync(
     string query,
     UserContext context,
