@@ -7,8 +7,8 @@
         <h4>@Title</h4>
         <p>Priority: @Priority/5</p>
     </div>
-    <button class="task-action-button" @onclick="CreateTask">
-        Create Task
+    <button class="task-action-button" @onclick="ShowTaskModal">
+        Review & Create Task
     </button>
 </div>
 
@@ -18,9 +18,9 @@
     [Parameter] public string Description { get; set; }
     [Parameter] public DateTime? DueDate { get; set; }
     [Parameter] public List<string> Subtasks { get; set; } = new();
-    [Parameter] public EventCallback<TaskSuggestion> OnTaskCreated { get; set; }
+    [Parameter] public EventCallback<TaskSuggestion> OnShowModal { get; set; }
 
-    private async Task CreateTask()
+    private async Task ShowTaskModal()
     {
         var task = new TaskSuggestion
             {
@@ -31,6 +31,6 @@
                 Subtasks = Subtasks
             };
 
-        await OnTaskCreated.InvokeAsync(task);
+        await OnShowModal.InvokeAsync(task);
     }
 }

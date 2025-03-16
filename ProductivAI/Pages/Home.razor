@@ -17,6 +17,7 @@
 @inject IJSRuntime JSRuntime
 @inject NavigationManager NavigationManager
 @inject IConversationService ConversationService
+@inject MessageFormattingService MessageFormatter
 
 <div class="dashboard-container">
     <div class="dashboard-content">      
@@ -50,41 +51,41 @@
                 {
                         <div class="messages-container">
                         @foreach (var message in messages)
-{
-    <div class="message-row @(message.IsFromUser ? "message-right" : "message-left")">
-        <div class="avatar-container">
-            <div class="avatar @(message.IsFromUser ? "user-avatar" : "ai-avatar")">
-                @if (message.IsFromUser)
-                {
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                }
-                else
-                {
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="9" x2="9" y2="21"></line><line x1="15" y1="9" x2="15" y2="21"></line></svg>
-                }
-            </div>
-        </div>
-        <div class="message-bubble">
-            <div class="message-content">
-                @((MarkupString)FormatMessageContent(message.Content))
-            </div>
-            
-            @if (!message.IsFromUser && message == messages.Last())
-            {
-                @foreach (var task in extractedTasks)
-                {
-                    <TaskSuggestionComponent 
-                        Title="@task.Title"
-                        Description="@task.Description"
-                        Priority="@task.Priority"
-                        DueDate="@task.DueDate"
-                        Subtasks="@task.Subtasks" 
-                        OnTaskCreated="@((TaskSuggestion t) => HandleTaskCreated(t))" />
-                }
-            }
-        </div>
-    </div>
-}
+                        {
+                                    <div class="message-row @(message.IsFromUser ? "message-right" : "message-left")">
+                                        <div class="avatar-container">
+                                            <div class="avatar @(message.IsFromUser ? "user-avatar" : "ai-avatar")">
+                                        @if (message.IsFromUser)
+                                        {
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                                        }
+                                        else
+                                        {
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line><line x1="9" y1="9" x2="9" y2="21"></line><line x1="15" y1="9" x2="15" y2="21"></line></svg>
+                                        }
+                                            </div>
+                                        </div>
+                                        <div class="message-bubble">
+                                            <div class="message-content">
+                                        @((MarkupString)FormatMessageContent(message.Content))
+                                            </div>
+
+                                    @if (!message.IsFromUser && message == messages.Last())
+                                    {
+                                        @foreach (var task in extractedTasks)
+                                        {
+                                                            <TaskSuggestionComponent 
+                                                                Title="@task.Title"
+                                                                Description="@task.Description"
+                                                                Priority="@task.Priority"
+                                                                DueDate="@task.DueDate"
+                                                                Subtasks="@task.Subtasks" 
+                                                                OnShowModal="@((TaskSuggestion t) => ShowTaskModalWithData(t))" />
+                                        }
+                                    }
+                                        </div>
+                                    </div>
+                        }
 
                         @if (isStreaming)
                         {
@@ -204,287 +205,290 @@
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
                     </button>
                     <button class="btn-icon" @onclick="EndAndArchiveConversation" disabled="@(isStreaming || isEndingConversation)">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="3 6 5 6 21 6"></polyline>
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-        </svg>
-        End & Archive
-    </button>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                        End & Archive
+                    </button>
                 </div>
             </div>
         </div>
 
         <!-- Tasks Panel with padding -->
         <div class="tasks-panel">
-    <div class="tasks-inner-container">
-        <!-- Panel header -->
-        <div class="panel-header">
-    <h2>Tasks</h2>
-    <div class="flex gap-2">
-        <button class="btn-new-task" @onclick="ShowEmptyNewTaskModal" title="New Task">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-        </button>
-        <button class="btn-new-task" @onclick="ShowUserContextModal" title="Edit User Context">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-        </button>
-        <select class="select-input" @bind="currentSortOption" @bind:after="SortTasksAsync">
-            <option value="DueDate">Due Date</option>
-            <option value="Priority">Priority</option>
-            <option value="CreationDate">Creation Date</option>
-        </select>
-    </div>
-</div>
+            <div class="tasks-inner-container">
+                <!-- Panel header -->
+                <div class="panel-header">
+                    <h2>Tasks</h2>
+                    <div class="flex gap-2">
+                        <button class="btn-new-task" @onclick="ShowEmptyNewTaskModal" title="New Task">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        </button>
+                        <button class="btn-new-task" @onclick="ShowUserContextModal" title="Edit User Context">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                        </button>
+                        <select class="select-input" @bind="currentSortOption" @bind:after="SortTasksAsync">
+                            <option value="DueDate">Due Date</option>
+                            <option value="Priority">Priority</option>
+                            <option value="CreationDate">Creation Date</option>
+                        </select>
+                    </div>
+                </div>
 
-            <div class="tasks-list">
-                @if (loading)
-                {
-                        <div class="loading-spinner">
-                            <div class="spinner"></div>
-                            <span>Loading tasks...</span>
-                        </div>
-                }
-                else if (tasks == null || !tasks.Any())
-                {
-                        <div class="empty-state">
-                            <div class="empty-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                            </div>
-                            <p>No tasks yet. Create your first task to get started.</p>
-                        </div>
-                }
-                else
-                {
-                    @if (overdueTasks.Any())
+                <div class="tasks-list">
+                    @if (loading)
                     {
-                                <div class="task-group">
-                                    <h4 class="text-red-600 font-medium">Overdue</h4>
-                            @foreach (var task in overdueTasks)
-                            {
-                                            <TaskItemComponent Task="task" 
-                                                            OnComplete="CompleteTaskAsync" 
-                                                            OnEdit="EditTask" 
-                                                            OnAddSubtask="ShowAddSubtaskModal" />
-                            }
-                                </div>
+                            <div class="loading-spinner">
+                                <div class="spinner"></div>
+                                <span>Loading tasks...</span>
+                            </div>
                     }
-
-                        <div class="task-group">
-                            <h4 class="font-medium">Tasks</h4>
-                        @foreach (var task in regularTasks)
+                    else if (tasks == null || !tasks.Any())
+                    {
+                            <div class="empty-state">
+                                <div class="empty-icon">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                                </div>
+                                <p>No tasks yet. Create your first task to get started.</p>
+                            </div>
+                    }
+                    else
+                    {
+                        @if (overdueTasks.Any())
                         {
-                                    <TaskItemComponent Task="task" 
+                                    <div class="task-group">
+                                        <h4 class="text-red-600 font-medium">Overdue</h4>
+                                @foreach (var task in overdueTasks)
+                                {
+                                                <TaskItemComponent Task="task" 
                                                     OnComplete="CompleteTaskAsync" 
                                                     OnEdit="EditTask" 
                                                     OnAddSubtask="ShowAddSubtaskModal" />
+                                }
+                                    </div>
                         }
-                        </div>
-                }
+
+                            <div class="task-group">
+                                <h4 class="font-medium">Tasks</h4>
+                            @foreach (var task in regularTasks)
+                            {
+                                        <TaskItemComponent Task="task" 
+                                            OnComplete="CompleteTaskAsync" 
+                                            OnEdit="EditTask" 
+                                            OnAddSubtask="ShowAddSubtaskModal" />
+                            }
+                            </div>
+                    }
+                </div>
             </div>
         </div>
-        </div>
     </div>
+</div>
 
+<!-- Modal container positioned as its own layer outside main layout -->
+<div id="task-modals-container">
     @if (showNewTaskModal)
     {
-        <div class="modal-backdrop"></div>
-        <div class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>@(editingTask ? "Edit Task" : "New Task")</h3>
-                    <button class="close-button" @onclick="HideModal">×</button>
-                </div>
-                <div class="modal-body">
-                    <EditForm Model="newTask" OnValidSubmit="SaveTaskAsync">
-                        <DataAnnotationsValidator />
-                        <ValidationSummary />
+            <div class="task-modal-backdrop"></div>
+            <div class="task-modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>@(editingTask ? "Edit Task" : "New Task")</h3>
+                        <button class="close-button" @onclick="HideModal">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <EditForm Model="newTask" OnValidSubmit="SaveTaskAsync">
+                            <DataAnnotationsValidator />
+                            <ValidationSummary />
 
-                        <div class="form-group">
-                            <label for="title">Title</label>
-                            <InputText id="title" class="form-input" @bind-Value="newTask.Title" @onfocus="async () => await DisableShortcutsAsync()" @onblur="async () => await EnableShortcutsAsync()" />
-                        </div>
-
-                        <div class="form-group">
-                            <label for="description">Description</label>
-                            <InputTextArea id="description" class="form-textarea" @bind-Value="newTask.Description" rows="3" @onfocus="async () => await DisableShortcutsAsync()" @onblur="async () => await EnableShortcutsAsync()" />
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group half">
-                                <label for="dueDate">Due Date</label>
-                                <InputDate id="dueDate" class="form-input" @bind-Value="newTask.DueDate" @onfocus="async () => await DisableShortcutsAsync()" @onblur="async () => await EnableShortcutsAsync()" />
+                            <div class="form-group">
+                                <label for="title">Title</label>
+                                <InputText id="title" class="form-input" @bind-Value="newTask.Title" @onfocus="async () => await DisableShortcutsAsync()" @onblur="async () => await EnableShortcutsAsync()" />
                             </div>
-                            <div class="form-group half">
-                                <label for="priority">Priority (1-5)</label>
-                                <InputNumber id="priority" class="form-input" @bind-Value="newTask.Priority" min="1" max="5" @onfocus="async () => await DisableShortcutsAsync()" @onblur="async () => await EnableShortcutsAsync()" />
-                            </div>
-                        </div>
 
-                        <div class="form-check">
-                            <InputCheckbox id="isRecurring" @bind-Value="newTask.IsRecurring" />
-                            <label for="isRecurring">Recurring Task</label>
-                        </div>
+                            <div class="form-group">
+                                <label for="description">Description</label>
+                                <InputTextArea id="description" class="form-textarea" @bind-Value="newTask.Description" rows="3" @onfocus="async () => await DisableShortcutsAsync()" @onblur="async () => await EnableShortcutsAsync()" />
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group half">
+                                    <label for="dueDate">Due Date</label>
+                                    <InputDate id="dueDate" class="form-input" @bind-Value="newTask.DueDate" @onfocus="async () => await DisableShortcutsAsync()" @onblur="async () => await EnableShortcutsAsync()" />
+                                </div>
+                                <div class="form-group half">
+                                    <label for="priority">Priority (1-5)</label>
+                                    <InputNumber id="priority" class="form-input" @bind-Value="newTask.Priority" min="1" max="5" @onfocus="async () => await DisableShortcutsAsync()" @onblur="async () => await EnableShortcutsAsync()" />
+                                </div>
+                            </div>
+
+                            <div class="form-check">
+                                <InputCheckbox id="isRecurring" @bind-Value="newTask.IsRecurring" />
+                                <label for="isRecurring">Recurring Task</label>
+                            </div>
 
                         @if (newTask.IsRecurring)
                         {
-                                <div class="form-group">
-                                    <label for="recurrencePattern">Recurrence Pattern</label>
-                                    <InputSelect id="recurrencePattern" class="form-select" @bind-Value="newTask.RecurrencePattern">
-                                        <option value="daily">Daily</option>
-                                        <option value="weekly">Weekly</option>
-                                        <option value="monthly">Monthly</option>
-                                        <option value="yearly">Yearly</option>
-                                        <option value="every 2 days">Every 2 Days</option>
-                                        <option value="every 2 weeks">Every 2 Weeks</option>
-                                    </InputSelect>
-                                </div>
+                                    <div class="form-group">
+                                        <label for="recurrencePattern">Recurrence Pattern</label>
+                                        <InputSelect id="recurrencePattern" class="form-select" @bind-Value="newTask.RecurrencePattern">
+                                            <option value="daily">Daily</option>
+                                            <option value="weekly">Weekly</option>
+                                            <option value="monthly">Monthly</option>
+                                            <option value="yearly">Yearly</option>
+                                            <option value="every 2 days">Every 2 Days</option>
+                                            <option value="every 2 weeks">Every 2 Weeks</option>
+                                        </InputSelect>
+                                    </div>
                         }
 
-                        <!-- Subtasks Section -->
+                            <!-- Subtasks Section -->
                             <div class="subtasks-section">
-                            <div class="section-header">
-                                <h4>Subtasks</h4>
-                            </div>
+                                <div class="section-header">
+                                    <h4>Subtasks</h4>
+                                </div>
 
                             @if (newTask.SubTasks.Any())
                             {
-                                    <div class="subtasks-list">
+                                        <div class="subtasks-list">
                                     @foreach (var subtask in newTask.SubTasks)
                                     {
-                                                <div class="subtask-item">
-                                                    <div class="subtask-checkbox">
-                                                        <input type="checkbox" checked="@subtask.IsCompleted" @onchange="e => subtask.IsCompleted = (bool)e.Value" />
-                                                    </div>
-                                                    <div class="subtask-content">
+                                                    <div class="subtask-item">
+                                                        <div class="subtask-checkbox">
+                                                            <input type="checkbox" checked="@subtask.IsCompleted" @onchange="e => subtask.IsCompleted = (bool)e.Value" />
+                                                        </div>
+                                                        <div class="subtask-content">
                                                 @subtask.Description
+                                                        </div>
+                                                        <button type="button" class="subtask-remove" @onclick="() => RemoveSubtask(subtask)">×</button>
                                                     </div>
-                                                    <button type="button" class="subtask-remove" @onclick="() => RemoveSubtask(subtask)">×</button>
-                                                </div>
                                     }
-                                    </div>
+                                        </div>
                             }
                             else
                             {
-                                    <div class="no-subtasks">No subtasks yet</div>
+                                        <div class="no-subtasks">No subtasks yet</div>
                             }
 
-                            <div class="add-subtask-form">
-                                <input type="text" class="form-input" @bind="newSubtaskDescription" placeholder="Add a subtask..." @onkeydown="HandleSubtaskKeyDown" />
-                                <button type="button" class="btn-primary" @onclick="AddSubtaskToCurrentTask">Add</button>
+                                <div class="add-subtask-form">
+                                    <input type="text" class="form-input" @bind="newSubtaskDescription" placeholder="Add a subtask..." @onkeydown="HandleSubtaskKeyDown" />
+                                    <button type="button" class="btn-primary" @onclick="AddSubtaskToCurrentTask">Add</button>
+                                </div>
                             </div>
-                        </div>
-
-                        <div class="modal-footer">
-                            <button type="button" class="btn-secondary" @onclick="HideModal">Cancel</button>
-                            <button type="submit" class="btn-primary">Save</button>
-                        </div>
-                    </EditForm>
+                            </EditForm>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn-secondary" @onclick="HideModal">Cancel</button>
+                        <button type="submit" class="btn-primary" @onclick="SaveTaskAsync">Save</button>
+                    </div>
                 </div>
             </div>
-        </div>
     }
+
     @if (showUserContextModal)
     {
-                    <div class="modal-backdrop"></div>
-        <div class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>User Context Settings</h3>
-                    <button class="close-button" @onclick="HideModal">×</button>
-                </div>
-                <div class="modal-body">
-                    <!-- Work Description -->
-                    <div class="form-group context-group">
-                        <div class="context-header">
-                            <label for="workDescription">Work Description</label>
-                            <div class="context-pill @GetContextLevelClass(userContext.WorkDescription)">
+            <div class="task-modal-backdrop"></div>
+            <div class="task-modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>User Context Settings</h3>
+                        <button class="close-button" @onclick="HideModal">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <!-- Work Description -->
+                        <div class="form-group context-group">
+                            <div class="context-header">
+                                <label for="workDescription">Work Description</label>
+                                <div class="context-pill @GetContextLevelClass(userContext.WorkDescription)">
                                 @GetContextLevelText(userContext.WorkDescription)
+                                </div>
                             </div>
+                            <textarea id="workDescription" class="form-textarea" 
+                                @bind="userContext.WorkDescription" 
+                                @bind:event="oninput"
+                                @onchange="StateHasChanged"
+                                rows="3" 
+                                placeholder="Describe your work, role, or current project..."></textarea>
                         </div>
-                        <textarea id="workDescription" class="form-textarea" 
-                            @bind="userContext.WorkDescription" 
-                            @bind:event="oninput"
-                            @onchange="StateHasChanged"
-                            rows="3" 
-                            placeholder="Describe your work, role, or current project..."></textarea>
-                    </div>
 
-                    <!-- Short Term Focus -->
-                    <div class="form-group context-group">
-                        <div class="context-header">
-                            <label for="shortTermFocus">Short Term Focus</label>
-                            <div class="context-pill @GetContextLevelClass(shortTermFocus)">
+                        <!-- Short Term Focus -->
+                        <div class="form-group context-group">
+                            <div class="context-header">
+                                <label for="shortTermFocus">Short Term Focus</label>
+                                <div class="context-pill @GetContextLevelClass(shortTermFocus)">
                                 @GetContextLevelText(shortTermFocus)
+                                </div>
                             </div>
+                            <textarea id="shortTermFocus" class="form-textarea" 
+                                @bind="shortTermFocus" 
+                                @bind:event="oninput"
+                                @onchange="StateHasChanged"
+                                rows="3" 
+                                placeholder="What are you focusing on in the short term? E.g., completing project X, learning skill Y..."></textarea>
                         </div>
-                        <textarea id="shortTermFocus" class="form-textarea" 
-                            @bind="shortTermFocus" 
-                            @bind:event="oninput"
-                            @onchange="StateHasChanged"
-                            rows="3" 
-                            placeholder="What are you focusing on in the short term? E.g., completing project X, learning skill Y..."></textarea>
-                    </div>
 
-                    <!-- Long Term Goals -->
-                    <div class="form-group context-group">
-                        <div class="context-header">
-                            <label for="longTermGoals">Long Term Goals</label>
-                            <div class="context-pill @GetContextLevelClass(longTermGoals)">
+                        <!-- Long Term Goals -->
+                        <div class="form-group context-group">
+                            <div class="context-header">
+                                <label for="longTermGoals">Long Term Goals</label>
+                                <div class="context-pill @GetContextLevelClass(longTermGoals)">
                                 @GetContextLevelText(longTermGoals)
+                                </div>
+                            </div>
+                            <textarea id="longTermGoals" class="form-textarea" 
+                                @bind="longTermGoals" 
+                                @bind:event="oninput"
+                                @onchange="StateHasChanged"
+                                rows="3" 
+                                placeholder="What are your long-term goals? E.g., career growth, skill mastery, project completion..."></textarea>
+                        </div>
+
+                        <!-- Sorting Preferences -->
+                        <div class="form-group">
+                            <label>Sorting Preferences</label>
+                            <div class="radio-group">
+                                <label class="radio-label">
+                                    <input type="radio" name="sortPreference" value="DueDate" 
+                                        checked="@(userContext.SortPreference == TaskSortPreference.DueDate)" 
+                                        @onchange="() => userContext.SortPreference = TaskSortPreference.DueDate" />
+                                    Due Date
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="sortPreference" value="Priority" 
+                                        checked="@(userContext.SortPreference == TaskSortPreference.Priority)" 
+                                        @onchange="() => userContext.SortPreference = TaskSortPreference.Priority" />
+                                    Priority
+                                </label>
+                                <label class="radio-label">
+                                    <input type="radio" name="sortPreference" value="CreationDate" 
+                                        checked="@(userContext.SortPreference == TaskSortPreference.CreationDate)" 
+                                        @onchange="() => userContext.SortPreference = TaskSortPreference.CreationDate" />
+                                    Creation Date
+                                </label>
                             </div>
                         </div>
-                        <textarea id="longTermGoals" class="form-textarea" 
-                            @bind="longTermGoals" 
-                            @bind:event="oninput"
-                            @onchange="StateHasChanged"
-                            rows="3" 
-                            placeholder="What are your long-term goals? E.g., career growth, skill mastery, project completion..."></textarea>
-                    </div>
 
-                    <!-- Sorting Preferences -->
-                    <div class="form-group">
-                        <label>Sorting Preferences</label>
-                        <div class="radio-group">
-                            <label class="radio-label">
-                                <input type="radio" name="sortPreference" value="DueDate" 
-                                    checked="@(userContext.SortPreference == TaskSortPreference.DueDate)" 
-                                    @onchange="() => userContext.SortPreference = TaskSortPreference.DueDate" />
-                                Due Date
-                            </label>
-                            <label class="radio-label">
-                                <input type="radio" name="sortPreference" value="Priority" 
-                                    checked="@(userContext.SortPreference == TaskSortPreference.Priority)" 
-                                    @onchange="() => userContext.SortPreference = TaskSortPreference.Priority" />
-                                Priority
-                            </label>
-                            <label class="radio-label">
-                                <input type="radio" name="sortPreference" value="CreationDate" 
-                                    checked="@(userContext.SortPreference == TaskSortPreference.CreationDate)" 
-                                    @onchange="() => userContext.SortPreference = TaskSortPreference.CreationDate" />
-                                Creation Date
-                            </label>
+                        <!-- AI Settings -->
+                        <div class="form-group">
+                            <div class="form-check">
+                                <InputCheckbox id="useReasoning" @bind-Value="userContext.UseReasoning" />
+                                <label for="useReasoning">Use AI reasoning capabilities</label>
+                            </div>
                         </div>
                     </div>
-
-                    <!-- AI Settings -->
-                    <div class="form-group">
-                        <div class="form-check">
-                            <InputCheckbox id="useReasoning" @bind-Value="userContext.UseReasoning" />
-                            <label for="useReasoning">Use AI reasoning capabilities</label>
-                        </div>
-                    </div>
-
                     <div class="modal-footer">
                         <button class="btn-secondary" @onclick="HideModal">Cancel</button>
                         <button class="btn-primary" @onclick="SaveUserContext">Save</button>
                     </div>
                 </div>
             </div>
-        </div>
     }
+
     @if (showSubtaskModal)
     {
-                    <div class="modal-backdrop"></div>
-        <div class="modal">
+            <div class="task-modal-backdrop"></div>
+            <div class="task-modal">
                 <div class="modal-content">
                     <div class="modal-header">
                         <h3>Add Subtask</h3>
@@ -495,158 +499,241 @@
                             <label for="subtaskDescription">Description</label>
                             <input id="subtaskDescription" class="form-input" @bind="newSubtaskDescription" />
                         </div>
-
-                        <div class="modal-footer">
-                            <button class="btn-secondary" @onclick="HideModal">Cancel</button>
-                            <button class="btn-primary" @onclick="AddSubtaskAsync">Add</button>
-                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn-secondary" @onclick="HideModal">Cancel</button>
+                        <button class="btn-primary" @onclick="AddSubtaskAsync">Add</button>
                     </div>
                 </div>
             </div>
     }
+
     @if (showSettingsModal)
     {
-        <div class="modal-backdrop"></div>
-        <div class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Settings</h3>
-                    <button class="close-button" @onclick="() => showSettingsModal = false">×</button>
-                </div>
-                <div class="modal-body">
-                    <div class="form-group">
-                        <label for="workDescription">Work Description</label>
-                        <textarea id="workDescription" class="form-textarea" @bind="userSettings.WorkDescription" rows="3"></textarea>
+            <div class="task-modal-backdrop"></div>
+            <div class="task-modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Settings</h3>
+                        <button class="close-button" @onclick="() => showSettingsModal = false">×</button>
                     </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label for="workDescription">Work Description</label>
+                            <textarea id="workDescription" class="form-textarea" @bind="userSettings.WorkDescription" rows="3"></textarea>
+                        </div>
 
-                    <div class="form-group">
-                        <label>Focus Areas</label>
-                        <div class="flex flex-wrap gap-2 mt-2">
+                        <div class="form-group">
+                            <label>Focus Areas</label>
+                            <div class="flex flex-wrap gap-2 mt-2">
                             @foreach (var area in userSettings.FocusAreas)
                             {
-                                    <div class="bg-gray-200 px-2 py-1 rounded text-sm flex items-center">
-                                        <span>@area</span>
-                                        <button class="ml-2 text-gray-500" @onclick="() => RemoveFocusArea(area)">×</button>
-                                    </div>
+                                        <div class="bg-gray-200 px-2 py-1 rounded text-sm flex items-center">
+                                            <span>@area</span>
+                                            <button class="ml-2 text-gray-500" @onclick="() => RemoveFocusArea(area)">×</button>
+                                        </div>
                             }
-                            <div class="flex">
-                                <input type="text" class="form-input" @bind="newFocusArea" placeholder="Add focus area..." />
-                                <button class="btn-primary ml-2" @onclick="AddFocusArea">Add</button>
+                                <div class="flex">
+                                    <input type="text" class="form-input" @bind="newFocusArea" placeholder="Add focus area..." />
+                                    <button class="btn-primary ml-2" @onclick="AddFocusArea">Add</button>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div class="form-group">
-                        <label>Preferred AI Model</label>
-                        <select class="form-select" @bind="userSettings.PreferredModel">
-                            <option value="qwen32b">Qwen 32B</option>
-                        </select>
+                        <div class="form-group">
+                            <label>Preferred AI Model</label>
+                            <select class="form-select" @bind="userSettings.PreferredModel">
+                                <option value="qwen32b">Qwen 32B</option>
+                            </select>
+                        </div>
                     </div>
-
                     <div class="modal-footer">
                         <button class="btn-secondary" @onclick="() => showSettingsModal = false">Cancel</button>
                         <button class="btn-primary" @onclick="SaveSettings">Save</button>
                     </div>
                 </div>
             </div>
-        </div>
     }
 
     @if (showCompletedTasksModal)
     {
-                <div class="modal-backdrop"></div>
-        <div class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Completed Tasks</h3>
-                    <button class="close-button" @onclick="() => showCompletedTasksModal = false">×</button>
-                </div>
-                <div class="modal-body">
+            <div class="task-modal-backdrop"></div>
+            <div class="task-modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Completed Tasks</h3>
+                        <button class="close-button" @onclick="() => showCompletedTasksModal = false">×</button>
+                    </div>
+                    <div class="modal-body">
                     @if (!completedTasks.Any())
                     {
-                            <div class="empty-state py-8">
-                                <p>No completed tasks yet.</p>
-                            </div>
+                                <div class="empty-state py-8">
+                                    <p>No completed tasks yet.</p>
+                                </div>
                     }
                     else
                     {
-                            <div class="completed-tasks-list max-h-96 overflow-y-auto">
+                                <div class="completed-tasks-list max-h-96 overflow-y-auto">
                             @foreach (var task in completedTasks)
                             {
-                                        <div class="task-item completed">
-                                            <div class="task-main">
-                                                <div class="task-checkbox">
-                                                    <input type="checkbox" checked disabled />
-                                                </div>
-                                                <div class="task-content">
-                                                    <div class="task-title">@task.Title</div>
+                                            <div class="task-item completed">
+                                                <div class="task-main">
+                                                    <div class="task-checkbox">
+                                                        <input type="checkbox" checked disabled />
+                                                    </div>
+                                                    <div class="task-content">
+                                                        <div class="task-title">@task.Title</div>
                                             @if (!string.IsNullOrEmpty(task.Description))
                                             {
-                                                            <div class="task-description">@task.Description</div>
+                                                                <div class="task-description">@task.Description</div>
                                             }
-                                                    <div class="task-metadata">
-                                                        <span>Completed: @task.CreatedDate.ToShortDateString()</span>
+                                                        <div class="task-metadata">
+                                                            <span>Completed: @task.CreatedDate.ToShortDateString()</span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="task-actions">
+                                                        <button class="btn btn-sm btn-outline-primary" 
+                                                                title="Reactivate task" 
+                                                                @onclick="() => ReactivateTaskAsync(task)">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18m-18 0l5-5m-5 5l5 5"></path></svg>
+                                                        </button>
                                                     </div>
                                                 </div>
-                                                <div class="task-actions">
-                                                    <button class="btn btn-sm btn-outline-primary" 
-                                                            title="Reactivate task" 
-                                                            @onclick="() => ReactivateTaskAsync(task)">
-                                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18m-18 0l5-5m-5 5l5 5"></path></svg>
-                                                    </button>
-                                                </div>
                                             </div>
-                                        </div>
                             }
-                            </div>
-                    }
-                </div>
-            </div>
-        </div>
-    }
-    @if (showRelevantConversations)
-    {
-        <div class="modal-backdrop"></div>
-        <div class="modal">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Related Past Conversations</h3>
-                    <button class="close-button" @onclick="() => showRelevantConversations = false">×</button>
-                </div>
-                <div class="modal-body">
-                    <p>I found previous conversations that might be relevant:</p>
-                    <div class="conversation-list">
-                        @foreach (var conv in relevantConversations)
-                        {
-                                <div class="conversation-item">
-                                    <div class="conversation-title">@conv.Title</div>
-                                    <div class="conversation-date">@conv.CreatedDate.ToShortDateString()</div>
-                                    <div class="conversation-summary">@conv.Summary</div>
-                                    <div class="conversation-tags">
-                                    @foreach (var tag in conv.Tags)
-                                    {
-                                                <span class="tag">@tag</span>
-                                    }
-                                    </div>
-                                    <button class="btn-primary" @onclick="() => ReferencePastConversation(conv)">
-                                        Reference This
-                                    </button>
                                 </div>
-                        }
+                    }
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn-secondary" @onclick="() => showCompletedTasksModal = false">Close</button>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button class="btn-secondary" @onclick="() => showRelevantConversations = false">
-                        Cancel
-                    </button>
-                </div>
             </div>
-        </div>
     }
 
-
+    @if (showRelevantConversations)
+    {
+            <div class="task-modal-backdrop"></div>
+            <div class="task-modal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Related Past Conversations</h3>
+                        <button class="close-button" @onclick="() => showRelevantConversations = false">×</button>
+                    </div>
+                    <div class="modal-body">
+                        <p>I found previous conversations that might be relevant:</p>
+                        <div class="conversation-list">
+                        @foreach (var conv in relevantConversations)
+                        {
+                                    <div class="conversation-item">
+                                        <div class="conversation-title">@conv.Title</div>
+                                        <div class="conversation-date">@conv.CreatedDate.ToShortDateString()</div>
+                                        <div class="conversation-summary">@conv.Summary</div>
+                                        <div class="conversation-tags">
+                                    @foreach (var tag in conv.Tags)
+                                    {
+                                                    <span class="tag">@tag</span>
+                                    }
+                                        </div>
+                                        <button class="btn-primary" @onclick="() => ReferencePastConversation(conv)">
+                                            Reference This
+                                        </button>
+                                    </div>
+                        }
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn-secondary" @onclick="() => showRelevantConversations = false">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+    }
 </div>
 
+<style>
+    /* Custom styles for task modals that only cover tasks panel */
+    #task-modals-container {
+        position: relative;
+        pointer-events: none; /* Allow clicks to pass through when no modals are visible */
+    }
+
+    .task-modal-backdrop {
+        position: fixed;
+        top: 0;
+        left: 60%; /* Start at 60% of screen (after chat panel) */
+        width: 40%; /* Only take up the tasks panel width (40% of screen) */
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.85);
+        backdrop-filter: blur(5px);
+        z-index: 9998;
+        display: block;
+        pointer-events: all; /* Re-enable pointer events */
+    }
+
+.task-modal {
+    position: fixed;
+    top: 50%;
+    left: 80%; /* Center within tasks panel (60% + 40%/2) */
+    transform: translateX(-50%) translateY(-50%);
+    width: 90%; /* Reduced from 95% to 90% */
+    max-width: 700px; /* Reduced from 900px to 700px */
+    background-color: #1a1a1a;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1);
+    z-index: 9999;
+    max-height: 90vh;
+    overflow: hidden; /* This prevents scrollbar on header */
+    animation: modal-slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    display: block;
+    pointer-events: all;
+}
+
+    /* Keep the original modal styling for content */
+    .task-modal .modal-content {
+        width: 100%;
+        background-color: #1a1a1a;
+        display: flex;
+        flex-direction: column;
+        height: 90vh; /* Match the max-height of the modal */
+    }
+
+    .task-modal .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 2rem 3rem;
+        background: linear-gradient(to right, #1a1a1a, #252525);
+        color: white;
+        border-bottom: 2px solid #333;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        flex-shrink: 0; /* Prevent header from shrinking */
+    }
+
+    .task-modal .modal-body {
+        flex: 1;
+        overflow-y: auto; /* Only the body scrolls */
+        padding: 2rem 3rem;
+    }
+
+    .task-modal .modal-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 1.5rem;
+        padding: 2rem 3rem;
+        background: linear-gradient(to right, #1a1a1a, #252525);
+        border-top: 2px solid #333;
+        position: sticky;
+        bottom: 0;
+        z-index: 2;
+        flex-shrink: 0; /* Prevent footer from shrinking */
+    }
+
+    
+</style>
 @code {
     // Task-related properties
     private List<TaskItem> tasks;
@@ -693,7 +780,7 @@
     private bool showTaskCreationModal = false;
     private int currentTaskMessageIndex = -1;
 
-     private bool autoScroll = true;
+    private bool autoScroll = true;
     private bool showScrollButton = false;
 
     // User context setup with proper defaults
@@ -926,26 +1013,36 @@
     [JSInvokable]
     public static Task PrepareTaskModalFromSuggestion()
     {
+        Console.WriteLine("PrepareTaskModalFromSuggestion called from JavaScript");
         if (CurrentInstance != null)
         {
             CurrentInstance.ShowTaskModalWithSuggestion();
+        }
+        else
+        {
+            Console.WriteLine("Error: CurrentInstance is null");
         }
         return Task.CompletedTask;
     }
 
     private void ShowTaskModalWithSuggestion()
     {
+        Console.WriteLine("ShowTaskModalWithSuggestion called with lastTaskSuggestion: " +
+                         (lastTaskSuggestion != null ? lastTaskSuggestion.Title : "null"));
+
         // Use the last task suggestion if available
         if (lastTaskSuggestion != null)
         {
-            // Clear any previous task data
+            // Create a new TaskItem from the suggestion
             newTask = new TaskItem
                 {
                     Title = lastTaskSuggestion.Title,
                     Description = lastTaskSuggestion.Description ?? "",
                     Priority = lastTaskSuggestion.Priority,
                     DueDate = lastTaskSuggestion.DueDate,
-                    SubTasks = new List<SubTask>() // Start with empty subtasks
+                    SubTasks = new List<SubTask>(), // Initialize empty list
+                    IsRecurring = false,
+                    CreatedDate = DateTime.Now
                 };
 
             // Add subtasks if available
@@ -956,25 +1053,32 @@
                     newTask.SubTasks.Add(new SubTask
                         {
                             Description = subtask,
-                            IsCompleted = false
+                            IsCompleted = false,
+                            Id = Guid.NewGuid()
                         });
                 }
             }
         }
         else
         {
-            // If no suggestion data is available, provide a default empty task
+            // If no suggestion data is available, create an empty task
             newTask = new TaskItem
                 {
+                    Title = "",
+                    Description = "",
                     Priority = 3,
-                    SubTasks = new List<SubTask>()
+                    DueDate = null,
+                    SubTasks = new List<SubTask>(),
+                    IsRecurring = false
                 };
         }
 
-        // Show the modal for user review - DON'T save yet
+        // Important: Display the modal but don't save the task yet
         editingTask = false;
         showNewTaskModal = true;
-        StateHasChanged();
+
+        // Force UI refresh
+        InvokeAsync(() => StateHasChanged());
     }
     private async Task LoadTasksAsync()
     {
@@ -1077,16 +1181,16 @@
 
                     // Create direct HTML replacement
                     var buttonHtml = $@"
-                <div class=""task-suggestion-block"">
-                    <p>I've identified a potential task in our conversation:</p>
-                    <div class=""task-suggestion-content"">
-                        <h4>{HttpUtility.HtmlEncode(taskData.Title)}</h4>
-                        <p>Priority: {taskData.Priority}/5</p>
-                    </div>
-                    <button class=""task-action-button"" onclick=""window.createTaskFromSuggestion()"">
-                        View and Create Task
-                    </button>
-                </div>";
+<div class=""task-suggestion-block"">
+    <p>I've identified a potential task in our conversation:</p>
+    <div class=""task-suggestion-content"">
+        <h4>{HttpUtility.HtmlEncode(taskData.Title)}</h4>
+        <p>Priority: {taskData.Priority}/5</p>
+    </div>
+    <button class=""task-action-button"" onclick=""window.createTaskFromSuggestion()"">
+        View and Create Task
+    </button>
+</div>";
 
                     // Replace the task marker with HTML
                     content = content.Replace(match.Value, buttonHtml);
@@ -1510,7 +1614,14 @@
 
         newSubtaskDescription = "";
     }
+    private void ShowTaskModalWithData(TaskSuggestion suggestion)
+    {
+        // Store the suggestion for use in the modal
+        lastTaskSuggestion = suggestion;
 
+        // Show the modal with suggestion data
+        ShowTaskModalWithSuggestion();
+    }
     private async Task CreateTaskFromMessage()
     {
         try
@@ -1695,54 +1806,16 @@
         if (string.IsNullOrEmpty(content))
             return "";
 
-        // Extract tasks from the message
+        // Do everything in one call and get both formatted HTML and tasks
+        var (formattedHtml, tasks) = MessageFormatter.FormatMessageWithTaskExtraction(content);
+
+        // Update the component's tasks collection
         extractedTasks.Clear();
-        content = ExtractTasks(content);
+        extractedTasks.AddRange(tasks);
 
-        // Process with markdown
-        var pipeline = new MarkdownPipelineBuilder()
-            .UseAdvancedExtensions()
-            .Build();
-
-        string html = Markdown.ToHtml(content, pipeline);
-        return html;
+        return formattedHtml;
     }
-    private string ExtractTasks(string content)
-    {
-        // Find and extract task data
-        var taskPattern = @"\[TASK:(\{.*?\})\]";
-        var matches = Regex.Matches(content, taskPattern, RegexOptions.Singleline);
 
-        foreach (Match match in matches)
-        {
-            if (match.Success && match.Groups.Count > 1)
-            {
-                try
-                {
-                    var jsonStr = match.Groups[1].Value;
-                    var taskData = JsonSerializer.Deserialize<TaskSuggestion>(
-                        jsonStr,
-                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-                    );
-
-                    if (taskData != null)
-                    {
-                        // Add to extracted tasks collection
-                        extractedTasks.Add(taskData);
-
-                        // Remove the task marker from content
-                        content = content.Replace(match.Value, "");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error extracting task: {ex.Message}");
-                }
-            }
-        }
-
-        return content;
-    }
     private string ProcessTaskMarkersAfterMarkdown(string html)
     {
         // Find text that matches [TASK:{...}] pattern

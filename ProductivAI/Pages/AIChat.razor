@@ -6,7 +6,7 @@
 @using System.Threading
 @inject OpenRouterAIService AIService
 @inject IJSRuntime JSRuntime
-
+@inject MessageFormattingService MessageFormatter
 <div class="fixed-height-chat">
     <!-- Chat Header (stays fixed) -->
     <div class="chat-header" style="height: 80px; min-height: 80px;">
@@ -408,51 +408,7 @@
 
     private string FormatMessageContent(string content)
     {
-        if (string.IsNullOrEmpty(content))
-            return "";
-
-        // Simple markdown-like formatting
-        // Code blocks
-        content = System.Text.RegularExpressions.Regex.Replace(
-            content,
-            @"```(.+?)```",
-            m => $"<pre><code>{m.Groups[1].Value}</code></pre>",
-            System.Text.RegularExpressions.RegexOptions.Singleline
-        );
-
-        // Bold
-        content = System.Text.RegularExpressions.Regex.Replace(
-            content,
-            @"\*\*(.+?)\*\*",
-            "<strong>$1</strong>"
-        );
-
-        // Italic
-        content = System.Text.RegularExpressions.Regex.Replace(
-            content,
-            @"\*(.+?)\*",
-            "<em>$1</em>"
-        );
-
-        // Headers
-        content = System.Text.RegularExpressions.Regex.Replace(
-            content,
-            @"^# (.+)$",
-            "<h3>$1</h3>",
-            System.Text.RegularExpressions.RegexOptions.Multiline
-        );
-
-        content = System.Text.RegularExpressions.Regex.Replace(
-            content,
-            @"^## (.+)$",
-            "<h4>$1</h4>",
-            System.Text.RegularExpressions.RegexOptions.Multiline
-        );
-
-        // Line breaks
-        content = content.Replace("\n", "<br>");
-
-        return content;
+        return MessageFormatter.FormatMessageContent(content);
     }
 
     private bool ShouldPreventEnterKey(KeyboardEventArgs e)

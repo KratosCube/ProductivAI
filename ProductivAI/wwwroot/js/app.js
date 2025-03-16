@@ -107,6 +107,7 @@ window.productivAIInterop = {
         return true;
     }
 };
+
 // Add this function to find and fix escaped HTML
 window.fixEscapedHtml = function () {
     // Find all elements that might contain escaped HTML task buttons
@@ -124,6 +125,7 @@ window.fixEscapedHtml = function () {
         }
     });
 };
+
 // Resize textarea based on content
 window.resizeTextArea = function (textAreaElement) {
     if (textAreaElement) {
@@ -152,7 +154,6 @@ window.scrollToEnd = function (element) {
 };
 
 // Add scroll event listener to chat container
-// Change from HandleChatScroll to match your C# method name
 window.setupChatScroll = function (chatElement, dotNetRef) {
     if (!chatElement) return;
 
@@ -189,22 +190,53 @@ window.isScrolledToBottom = function (element) {
     return (element.scrollHeight - element.scrollTop - element.clientHeight) <= tolerance;
 };
 
+// Clear any existing handlers to prevent duplicates
+if (window.taskButtonClickHandler) {
+    document.removeEventListener('click', window.taskButtonClickHandler);
+}
+
 // Task suggestion handling
 window.createTaskFromSuggestion = function () {
-    DotNet.invokeMethodAsync('ProductivAI', 'PrepareTaskModalFromSuggestion');
+    console.log("TASK BUTTON CLICKED - createTaskFromSuggestion called");
+
+    // Call the specific method for showing prefilled task modal
+    DotNet.invokeMethodAsync('ProductivAI', 'PrepareTaskModalFromSuggestion')
+        .then(() => {
+            console.log("Successfully called PrepareTaskModalFromSuggestion");
+        })
+        .catch(error => {
+            console.error("Error calling PrepareTaskModalFromSuggestion:", error);
+        });
+
+    // Prevent default action
+    return false;
 };
 
-// Also add event delegation for dynamically added buttons
-document.addEventListener('click', function (e) {
-    if (e.target.classList.contains('task-action-button')) {
-        console.log("Task button clicked via delegation!");
-        window.createTaskFromSuggestion();
+// Create a single handler for delegation
+window.taskButtonClickHandler = function (e) {
+    // Find the task action button by walking up the DOM tree
+    let target = e.target;
+    while (target != null) {
+        if (target.classList && target.classList.contains('task-action-button')) {
+            console.log("Task button clicked via event delegation!");
+            e.preventDefault();
+            e.stopPropagation();
+            window.createTaskFromSuggestion();
+            return false;
+        }
+        target = target.parentElement;
     }
-});
+};
+
+// Register the single event delegation handler
+document.addEventListener('click', window.taskButtonClickHandler);
+
+// These functions are no longer needed or have been refactored
 window.createTask = function (taskId) {
     console.log("Creating task with ID: " + taskId);
     DotNet.invokeMethodAsync('ProductivAI', 'CreateTaskFromJS', taskId);
 };
+
 // Task helpers
 window.taskHelpers = {
     // Store a reference to the .NET component
@@ -216,8 +248,13 @@ window.taskHelpers = {
     }
 };
 
-// For task button click handling
-window.createTaskFromSuggestion = function () {
-    console.log("Task button clicked!");
-    DotNet.invokeMethodAsync('ProductivAI', 'ShowTaskModal');
+// Utility to render Blazor components into DOM nodes
+window.renderComponent = function (elementId, component) {
+    console.log("Attempting to render component into element: " + elementId);
+    // This would be implemented by the Blazor runtime
 };
+
+// Fix to ensure event delegation works for all buttons including dynamically added ones
+document.addEventListener('DOMContentLoaded', function () {
+    console.log("DOM fully loaded - setting up global handlers");
+});

@@ -74,7 +74,21 @@ namespace ProductivAI.AIServices
             {
                 // Construct system prompt with user context
                 var systemPrompt = ConstructSystemPromptFromContext(context);
+                systemPrompt += @"
 
+When responding to messages, focus primarily on providing helpful conversation and content. Only suggest creating a task when there is a clear reason why the user would benefit from tracking something as a task.
+
+Important guidelines for task suggestions:
+- Limit to a maximum of 2 task suggestions per response
+- Only suggest tasks for concrete, actionable items
+- Tasks should be directly relevant to what the user is discussing
+- Don't suggest tasks for routine or trivial matters
+
+When suggesting a task, use the following format:
+[TASK:{""title"":""Task title"",""description"":""Task details"",""priority"":3,""dueDate"":null,""subtasks"":[""Subtask 1"",""Subtask 2""]}]
+
+For example:
+[TASK:{""title"":""Review quarterly reports"",""description"":""Go through Q1 financial reports before the meeting"",""priority"":4,""dueDate"":""2025-03-20"",""subtasks"":[""Download reports"",""Mark important sections"",""Prepare questions""]}]";
                 // Prepare request for AI model with streaming enabled
                 var requestBody = new
                 {
@@ -609,7 +623,7 @@ For example:
                 {
                     requestObject["provider"] = new Dictionary<string, object>
                     {
-                        ["order"] = new[] { /*"Groq",*/"Hyperbolic", "Parasail", "Fireworks" },
+                        ["order"] = new[] { "Groq", "Hyperbolic", "Parasail", "Fireworks" },
                         ["allow_fallbacks"] = false
                     };
 
@@ -798,6 +812,15 @@ For example:
             {
                 sb.AppendLine($"\nThe user's long-term goals include: {string.Join(", ", context.LongTermGoals)}");
             }
+
+            // Add the new instructions for limiting task suggestions
+            sb.AppendLine("\nWhen responding to messages, focus primarily on providing helpful conversation and content. Only suggest creating a task when there is a clear reason why the user would benefit from tracking something as a task.");
+            sb.AppendLine("\nImportant guidelines for task suggestions:");
+            sb.AppendLine("- Limit to a maximum of 2 task suggestions per response");
+            sb.AppendLine("- Only suggest tasks for concrete, actionable items");
+            sb.AppendLine("- Tasks should be directly relevant to what the user is discussing");
+            sb.AppendLine("- Don't suggest tasks for routine or trivial matters");
+            sb.AppendLine("\nWhen suggesting a task, use the [TASK:{json}] format sparingly and only when truly valuable to the user.");
 
             sb.AppendLine("\nProvide concise, specific, and actionable responses. Prioritize clarity and usefulness in your answers.");
 
@@ -1026,7 +1049,14 @@ For example:
             {
                 basePrompt += @"
 
-You can suggest tasks when the user's message indicates something that should be done or remembered.
+When responding to messages, focus primarily on providing helpful conversation and content. Only suggest creating a task when there is a clear reason why the user would benefit from tracking something as a task.
+
+Important guidelines for task suggestions:
+- Limit to a maximum of 2 task suggestions per response
+- Only suggest tasks for concrete, actionable items
+- Tasks should be directly relevant to what the user is discussing
+- Don't suggest tasks for routine or trivial matters
+
 When suggesting a task, add a special task suggestion block at the end of your response using this format:
 
 <task-suggestion>

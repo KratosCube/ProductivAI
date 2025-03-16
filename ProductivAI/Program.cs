@@ -26,12 +26,13 @@ builder.Services.AddScoped<IConversationRepository, LocalStorageConversationRepo
 builder.Services.AddScoped<IConversationService, ConversationService>();
 builder.Services.AddScoped<INoteService, NoteService>();
 builder.Services.AddScoped<ITaskService, TaskService>();
+builder.Services.AddScoped<MessageFormattingService>();
 
 // Register the default AI service with the IAIService interface
 builder.Services.AddScoped<IAIService>(sp =>
     new DefaultAIService(
         sp.GetRequiredService<HttpClient>(),
-        "xxx",
+        "",
         "qwen32b"
     )
 );
@@ -41,7 +42,7 @@ builder.Services.AddScoped<IAIService>(sp =>
 builder.Services.AddScoped<OpenRouterAIService>(sp =>
     new OpenRouterAIService(
         sp.GetRequiredService<HttpClient>(),
-        "xxx", // This will trigger simulation mode in the service
+        "", // This will trigger simulation mode in the service
         sp.GetRequiredService<IJSRuntime>(),
         "qwen32b",
         "ProductivAI"
