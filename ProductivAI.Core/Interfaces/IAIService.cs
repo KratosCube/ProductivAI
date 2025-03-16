@@ -14,6 +14,7 @@ namespace ProductivAI.Core.Interfaces
         Task<string> EnhanceNoteAsync(string noteContent, UserContext context);
         Task<string> ParseCommandAsync(string command, UserContext context);
         string GetModelName();
+        
 
         // Original method (keep this for backward compatibility)
         Task ProcessQueryWithStreamingAsync(
@@ -29,5 +30,8 @@ namespace ProductivAI.Core.Interfaces
             List<MessageHistory> conversationHistory,
             StreamingResponseCallback callback,
             CancellationToken cancellationToken = default);
+
+
     }
+
 }

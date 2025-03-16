@@ -18,6 +18,9 @@ namespace ProductivAI.Core.Models
         [JsonPropertyName("timestamp")]
         public DateTime Timestamp { get; set; } = DateTime.Now;
 
+        [JsonPropertyName("isSystemMessage")]
+        public bool IsSystemMessage { get; set; } = false;
+
         // Utility method to convert from a UI message
         public static MessageHistory FromChatMessage(object chatMessage)
         {

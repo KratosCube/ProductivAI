@@ -24,12 +24,18 @@ namespace ProductivAI.Application.Services
         Task<IEnumerable<TaskItem>> PrioritizeTasksAsync(UserContext userContext);
         Task<string> GetTaskSuggestionsAsync(UserContext userContext);
         Task<IEnumerable<TaskItem>> GetTasksByDueDateRangeAsync(DateTime startDate, DateTime endDate);
+        event Action TasksChanged;
     }
 
     public class TaskService : ITaskService
     {
         private readonly ITaskRepository _taskRepository;
         private readonly IAIService _aiService;
+        public event Action TasksChanged;
+        private void OnTasksChanged()
+        {
+            TasksChanged?.Invoke();
+        }
 
         public TaskService(ITaskRepository taskRepository, IAIService aiService)
         {
@@ -71,7 +77,7 @@ namespace ProductivAI.Application.Services
                 Priority = priority,
                 IsCompleted = false
             };
-
+            OnTasksChanged();
             return await _taskRepository.AddAsync(task);
         }
 
@@ -79,7 +85,7 @@ namespace ProductivAI.Application.Services
         {
             if (task == null)
                 throw new ArgumentNullException(nameof(task));
-
+            OnTasksChanged();
             await _taskRepository.UpdateAsync(task);
         }
 
@@ -97,6 +103,7 @@ namespace ProductivAI.Application.Services
             {
                 await CreateRecurringTaskInstanceAsync(task);
             }
+            OnTasksChanged();
         }
 
         public async Task ReactivateTaskAsync(Guid id)
@@ -107,6 +114,7 @@ namespace ProductivAI.Application.Services
 
             task.IsCompleted = false;
             await _taskRepository.UpdateAsync(task);
+            OnTasksChanged();
         }
 
         public async Task DeleteTaskAsync(Guid id)
@@ -131,7 +139,7 @@ namespace ProductivAI.Application.Services
 
             task.SubTasks.Add(subTask);
             await _taskRepository.UpdateAsync(task);
-
+            OnTasksChanged();
             return subTask;
         }
 
@@ -154,12 +162,15 @@ namespace ProductivAI.Application.Services
                 // Could add a configuration option to auto-complete tasks when all subtasks are done
                 // For now, we'll leave the task incomplete until explicitly completed
             }
+            OnTasksChanged();
         }
 
         public async Task<IEnumerable<TaskItem>> GetOverdueTasksAsync()
         {
             var activeTasks = await _taskRepository.GetActiveTasksAsync();
+            OnTasksChanged();
             return activeTasks.Where(t => t.DueDate.HasValue && t.DueDate.Value < DateTime.Today);
+            
         }
 
         public async Task<IEnumerable<TaskItem>> PrioritizeTasksAsync(UserContext userContext)
@@ -237,7 +248,7 @@ namespace ProductivAI.Application.Services
                     IsCompleted = false
                 });
             }
-
+            OnTasksChanged();
             return await _taskRepository.AddAsync(newTask);
         }
 

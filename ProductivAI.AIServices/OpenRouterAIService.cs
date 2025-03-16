@@ -573,8 +573,19 @@ For example:
                 // Construct enhanced system prompt with task suggestion capability
                 var systemPrompt = ConstructSystemPromptFromContext(context);
 
-                // Add task suggestion instructions to the system prompt
+                // Add task awareness and suggestion instructions to the system prompt
                 systemPrompt += @"
+
+## TASK AWARENESS
+You have access to the user's tasks in two ways:
+1. At the beginning of conversations through [CONTEXT_DATA] or [TASK_CONTEXT_UPDATE] sections
+2. When the user mentions tasks using @TaskName syntax with [TASK:{...json data...}]
+
+When discussing tasks:
+- Reference specific task details (due dates, priorities, subtasks)
+- Consider how tasks relate to the user's focus areas and goals
+- You can suggest prioritization based on due dates and importance
+- Acknowledge dependencies or relationships between mentioned tasks
 
 When suggesting a task, use the following format:
 [TASK:{""title"":""Task title"",""description"":""Task details"",""priority"":3,""dueDate"":null,""subtasks"":[""Subtask 1"",""Subtask 2""]}]
@@ -582,27 +593,130 @@ When suggesting a task, use the following format:
 For example:
 [TASK:{""title"":""Review quarterly reports"",""description"":""Go through Q1 financial reports before the meeting"",""priority"":4,""dueDate"":""2025-03-20"",""subtasks"":[""Download reports"",""Mark important sections"",""Prepare questions""]}]";
 
+                // Add context retention instructions
+                systemPrompt += @"
+
+## CONVERSATION CONTEXT RETENTION
+IMPORTANT: Always maintain awareness of the full conversation history and context.
+You MUST:
+1. Reference information from earlier in the conversation
+2. Maintain continuity across multiple messages
+3. Remember details the user has shared previously
+4. Avoid asking for information the user has already provided
+5. Build upon previous exchanges rather than treating each message in isolation
+6. If you're unsure if something was mentioned before, reference your uncertainty instead of assuming
+
+Example of good context retention:
+✓ ""As you mentioned earlier about your project deadline being next Friday...""
+✓ ""Building on our previous discussion about your workout routine...""
+✓ ""Since you're focusing on improving your Python skills as you told me earlier...""";
+
+                // Add instructions for current query focus
+                systemPrompt += @"
+
+## CURRENT QUERY FOCUS
+Your primary responsibility is to answer the user's CURRENT QUERY, which will be the most recent message.
+- Always prioritize addressing the specific question or request in the current query
+- The current query represents what the user wants to know RIGHT NOW
+- Use conversation history for context, but focus your response on the current query
+- If the current query is a follow-up to earlier discussion, explicitly acknowledge this connection
+- Don't summarize the entire conversation history unless specifically asked to do so";
+
+                // DEBUG: Log the system prompt
+                Console.WriteLine("=== SYSTEM PROMPT ===");
+                Console.WriteLine(systemPrompt);
+                Console.WriteLine("=== END SYSTEM PROMPT ===");
+
                 // Build messages array including conversation history
                 var messagesArray = new List<object>();
 
                 // First add the system message
                 messagesArray.Add(new { role = "system", content = systemPrompt });
 
-                // Then add all previous messages from history
+                // Track message counts for logging
+                int userMessages = 0;
+                int assistantMessages = 0;
+                int systemMessages = 0;
+
+                // Then add all previous messages from history, filtering out system messages
                 if (conversationHistory != null)
                 {
+                    // DEBUG: Log the conversation history
+                    Console.WriteLine($"=== CONVERSATION HISTORY (Count: {conversationHistory.Count}) ===");
+
+                    int messageIndex = 0;
                     foreach (var message in conversationHistory)
                     {
+                        // Log message details
+                        Console.WriteLine($"Message {messageIndex++}: " +
+                            $"IsUserMessage={message.IsUserMessage}, " +
+                            $"IsSystemMessage={message.IsSystemMessage == false}, " + // Fixed: Use proper null-conditional
+                            $"Length={message.Content?.Length ?? 0}");
+
+                        // Show first 100 chars of content for debugging
+                        string contentPreview = message.Content?.Length > 100 ?
+                            message.Content.Substring(0, 100) + "..." :
+                            message.Content ?? "null";
+                        Console.WriteLine($"Content: {contentPreview}");
+
+                        // Skip system messages as they're meant to be invisible context updates
+                        // FIXED: The logic was inverted - check if it IS a system message
+                        if (message.IsSystemMessage == false)  // Fixed: correct system message check
+                        {
+                            Console.WriteLine("Skipping system message");
+                            systemMessages++;
+                            continue;
+                        }
+
+                        // Truncate very long messages to ensure we don't exceed token limits
+                        string messageContent = message.Content;
+                        if (messageContent != null && messageContent.Length > 8000)
+                        {
+                            messageContent = messageContent.Substring(0, 8000) + "... [message truncated]";
+                        }
+
                         messagesArray.Add(new
                         {
                             role = message.IsUserMessage ? "user" : "assistant",
-                            content = message.Content
+                            content = messageContent
                         });
+
+                        // Count messages by type
+                        if (message.IsUserMessage)
+                            userMessages++;
+                        else
+                            assistantMessages++;
                     }
+
+                    Console.WriteLine($"Added to context: {userMessages} user msgs, {assistantMessages} assistant msgs, skipped {systemMessages} system msgs");
+                    Console.WriteLine("=== END CONVERSATION HISTORY ===");
                 }
 
-                // Finally add the current user query
-                messagesArray.Add(new { role = "user", content = query });
+                // Add a context reminder if we have a significant conversation history
+                if (userMessages > 2)
+                {
+                    messagesArray.Add(new
+                    {
+                        role = "system",
+                        content = "Remember to use the conversation history above for context, but focus your response on the current query below."
+                    });
+                }
+
+                // Add a marker to emphasize the current query
+                messagesArray.Add(new
+                {
+                    role = "system",
+                    content = "IMPORTANT: The following is the user's CURRENT QUERY that you need to focus on answering:"
+                });
+
+                // Finally add the current user query with a special marker
+                string enhancedQuery = $"[CURRENT QUERY] {query}";
+                messagesArray.Add(new { role = "user", content = enhancedQuery });
+
+                // DEBUG: Log the current query
+                Console.WriteLine("=== CURRENT QUERY ===");
+                Console.WriteLine(enhancedQuery);
+                Console.WriteLine("=== END CURRENT QUERY ===");
 
                 // Get model identifier
                 string modelId = GetModelIdentifier();
@@ -612,7 +726,7 @@ For example:
                 {
                     ["model"] = modelId,
                     ["messages"] = messagesArray.ToArray(),
-                    ["max_tokens"] = 10000,
+                    ["max_tokens"] = 20000,
                     ["temperature"] = 0.7,
                     ["stream"] = true,
                     ["include_reasoning"] = context.UseReasoning
@@ -632,6 +746,15 @@ For example:
 
                 // Create HTTP request message
                 var jsonContent = JsonSerializer.Serialize(requestObject);
+
+                // DEBUG: Log the final JSON request (this is what's sent to the API)
+                Console.WriteLine("=== FINAL API REQUEST JSON ===");
+                // Format the JSON for better readability
+                var options = new JsonSerializerOptions { WriteIndented = true };
+                var formattedJson = JsonSerializer.Serialize(requestObject, options);
+                Console.WriteLine(formattedJson);
+                Console.WriteLine("=== END FINAL API REQUEST JSON ===");
+
                 var content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
                 var request = new HttpRequestMessage(HttpMethod.Post, $"{ApiBaseUrl}/chat/completions")
@@ -664,9 +787,6 @@ For example:
                     if (line.StartsWith("data: "))
                     {
                         var data = line.Substring(6);
-
-                        // Log the raw incoming JSON for debugging
-                        Console.WriteLine("Received JSON: " + data);
 
                         // Check for "[DONE]" message
                         if (data == "[DONE]")
@@ -737,8 +857,58 @@ For example:
             }
         }
 
+        private async Task<string> GenerateConversationSummary(List<MessageHistory> history, UserContext context)
+        {
+            if (history == null || history.Count < 10)
+                return null; // No need to summarize short conversations
 
+            try
+            {
+                // Create a request to summarize the conversation
+                var recentHistory = history.Where(m => !m.IsSystemMessage == true)
+                                          .TakeLast(10)
+                                          .ToList();
 
+                var summaryRequest = new
+                {
+                    model = GetModelIdentifier(),
+                    messages = new[]
+                    {
+                new { role = "system", content = "Summarize the key points from this conversation in a concise paragraph. Focus on: 1) User's goals/needs, 2) Important details or preferences shared, 3) Conclusions or decisions reached." },
+                new { role = "user", content = JsonSerializer.Serialize(recentHistory.Select(m => new { role = m.IsUserMessage ? "user" : "assistant", content = m.Content })) }
+            },
+                    max_tokens = 250,
+                    temperature = 0.3
+                };
+
+                // Make API call to get summary
+                var response = await CallAIModelAsync(summaryRequest);
+
+                // Parse and return the summary - fix the variable name conflict here
+                if (response != null)
+                {
+                    using var doc = JsonDocument.Parse(response);
+                    if (doc.RootElement.TryGetProperty("choices", out var choices) &&
+                        choices[0].TryGetProperty("message", out var message) &&
+                        message.TryGetProperty("content", out var contentValue)) // Changed to contentValue
+                    {
+                        return contentValue.GetString();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error generating conversation summary: {ex.Message}");
+            }
+
+            return null;
+        }
+
+        // Add this public method to expose the functionality
+        public async Task<string> GenerateConversationSummaryAsync(List<MessageHistory> history)
+        {
+            return await GenerateConversationSummary(history, new UserContext());
+        }
 
 
         // NEW: JavaScript interop for streaming
@@ -786,6 +956,7 @@ For example:
                 "llama3" => "meta-llama/llama-3-8b-instruct",
                 "mixtral" => "mistralai/mixtral-8x7b-instruct",
                 "o3mini" => "openai/gpt-3.5-turbo",
+                "gemini-2" => "google/gemini-2.0-flash-001",
                 _ => "qwen32b" // Default model
             };
         }
@@ -812,15 +983,140 @@ For example:
             {
                 sb.AppendLine($"\nThe user's long-term goals include: {string.Join(", ", context.LongTermGoals)}");
             }
+            // Add this section to your existing method
+            sb.AppendLine("\n## CONVERSATION CONTEXT RETENTION");
+            sb.AppendLine("IMPORTANT: Always maintain awareness of the full conversation history and context.");
+            sb.AppendLine("You MUST:");
+            sb.AppendLine("1. Reference information from earlier in the conversation");
+            sb.AppendLine("2. Maintain continuity across multiple messages");
+            sb.AppendLine("3. Remember details the user has shared previously");
+            sb.AppendLine("4. Avoid asking for information the user has already provided");
+            sb.AppendLine("5. Build upon previous exchanges rather than treating each message in isolation");
+            sb.AppendLine("6. If you're unsure if something was mentioned before, reference your uncertainty instead of assuming");
 
-            // Add the new instructions for limiting task suggestions
-            sb.AppendLine("\nWhen responding to messages, focus primarily on providing helpful conversation and content. Only suggest creating a task when there is a clear reason why the user would benefit from tracking something as a task.");
-            sb.AppendLine("\nImportant guidelines for task suggestions:");
-            sb.AppendLine("- Limit to a maximum of 2 task suggestions per response");
-            sb.AppendLine("- Only suggest tasks for concrete, actionable items");
-            sb.AppendLine("- Tasks should be directly relevant to what the user is discussing");
-            sb.AppendLine("- Don't suggest tasks for routine or trivial matters");
-            sb.AppendLine("\nWhen suggesting a task, use the [TASK:{json}] format sparingly and only when truly valuable to the user.");
+            sb.AppendLine("\nFor example:");
+            sb.AppendLine("✓ \"As you mentioned earlier about your project deadline being next Friday...\"");
+            sb.AppendLine("✓ \"Building on our previous discussion about your workout routine...\"");
+            sb.AppendLine("✓ \"Since you're focusing on improving your Python skills as you told me earlier...\"");
+
+            // Interactive Task Creation Instructions
+            sb.AppendLine("\n## INTERACTIVE TASK CREATION");
+            sb.AppendLine("When identifying a potential task opportunity, ask clarifying questions BEFORE creating any task:");
+
+            sb.AppendLine("\n1. ASK SPECIFIC QUESTIONS FIRST:");
+            sb.AppendLine("   - Ask about exact schedule (specific days and times)");
+            sb.AppendLine("   - Ask about preferences, requirements, and constraints");
+            sb.AppendLine("   - Ask about deadlines and priority level");
+            sb.AppendLine("   - Break complex questions into individual questions for clearer responses");
+
+            sb.AppendLine("\n2. CREATE DETAILED TASKS AFTER GETTING ANSWERS:");
+            sb.AppendLine("   - Use the exact details provided by the user (never generic placeholders)");
+            sb.AppendLine("   - Include specific days, times, locations in subtasks");
+            sb.AppendLine("   - Make all subtasks concrete and immediately actionable");
+            sb.AppendLine("   - Use precise measurements, quantities, and deadlines");
+
+            sb.AppendLine("\n❌ INCORRECT (too generic):");
+            sb.AppendLine("   - \"Choose 3 days/times per week that align with schedule\"");
+            sb.AppendLine("   - \"Decide which muscle groups to target\"");
+            sb.AppendLine("   - \"Set specific goals for the project\"");
+
+            sb.AppendLine("\n✅ CORRECT (specific after asking questions):");
+            sb.AppendLine("   - \"Monday 6:30am: Upper body workout at home gym\"");
+            sb.AppendLine("   - \"Schedule client meeting for Thursday April 10th at 2pm via Zoom\"");
+            sb.AppendLine("   - \"Call Dr. Smith's office (555-123-4567) on Monday to schedule appointment\"");
+
+            sb.AppendLine("\nExample interaction flow:");
+            sb.AppendLine("1. User: \"I want to start working out regularly.\"");
+            sb.AppendLine("2. Assistant (YOU): [Ask questions first]");
+            sb.AppendLine("   \"I can help create a workout plan! To make it specific:");
+            sb.AppendLine("    - Which days of the week can you commit to working out?");
+            sb.AppendLine("    - What time of day works best for you?");
+            sb.AppendLine("    - Do you prefer home workouts or gym sessions?");
+            sb.AppendLine("    - What are your main fitness goals?\"");
+            sb.AppendLine("3. User: \"I can do Monday, Wednesday, Friday at 6am for 45 minutes at my local gym. I want to build strength.\"");
+            sb.AppendLine("4. Assistant (YOU): [Now create specific task with exact information]");
+            sb.AppendLine("   \"Based on your schedule, here's a strength training plan:\"");
+            sb.AppendLine("   [TASK:{\"title\":\"Three-day strength training program at City Gym\",\"description\":\"Follow a structured strength training program on Monday, Wednesday, and Friday at 6am for 45-minute sessions at City Gym focusing on building overall strength\",\"priority\":4,\"dueDate\":\"2025-04-05\",\"subtasks\":[\"Monday 6:00-6:45am: Chest and triceps - bench press, incline press, dips\",\"Wednesday 6:00-6:45am: Back and biceps - rows, pulldowns, curls\",\"Friday 6:00-6:45am: Legs and shoulders - squats, lunges, shoulder press\",\"Pack gym bag night before each session\",\"Record weights and reps in Strong app after each workout\",\"Schedule form check with trainer Jose in week 2\"]}]\"");
+
+            // Role-Based Assistance
+            sb.AppendLine("\n## ROLE-BASED ASSISTANCE");
+            sb.AppendLine("When responding to queries, adopt the appropriate professional role based on the context:");
+
+            sb.AppendLine("\n1. For project management queries → Respond as a Senior Project Manager");
+            sb.AppendLine("   - Focus on timelines, resources, stakeholder management, and deliverables");
+            sb.AppendLine("   - Use methodologies like Agile, Scrum, or Waterfall as appropriate");
+
+            sb.AppendLine("\n2. For software/technical queries → Respond as a Senior Software Architect");
+            sb.AppendLine("   - Emphasize best practices, design patterns, and technical considerations");
+            sb.AppendLine("   - Consider scalability, maintainability, and security implications");
+
+            sb.AppendLine("\n3. For business/strategy queries → Respond as a Business Strategy Consultant");
+            sb.AppendLine("   - Focus on competitive advantage, market analysis, and business models");
+            sb.AppendLine("   - Consider ROI, operational efficiency, and growth opportunities");
+
+            sb.AppendLine("\n4. For educational topics → Respond as an Educational Content Developer");
+            sb.AppendLine("   - Structure information in digestible, learning-friendly formats");
+            sb.AppendLine("   - Incorporate examples, practice opportunities, and knowledge checks");
+
+            sb.AppendLine("\n5. For lifestyle/home queries → Respond as a Lifestyle Organization Consultant");
+            sb.AppendLine("   - Provide systematic approaches to home management and organization");
+            sb.AppendLine("   - Consider efficiency, sustainability, and personal well-being");
+
+            sb.AppendLine("\nAdopt the role naturally without explicitly mentioning which role you're taking unless directly asked.");
+
+            // Example Tasks Section with Updated More Specific Examples
+            sb.AppendLine("\n## EXAMPLE TASKS");
+            sb.AppendLine("Here are examples of well-formatted tasks that represent best practices:");
+
+            // Work/Project Management - Updated with more specificity
+            sb.AppendLine("\nExample 1: Project Task");
+            sb.AppendLine("[TASK:{\"title\":\"Present Q2 marketing proposal to executive team on April 15\",\"description\":\"Prepare and deliver a 20-minute presentation on the Q2 marketing strategy with focus on the new product line to the executive team in the main conference room. Budget request: $175,000.\",\"priority\":5,\"dueDate\":\"2025-04-15\",\"subtasks\":[\"Collect March campaign metrics from Sarah by April 8\",\"Create slide deck with 15 maximum slides by April 10\",\"Include competitor analysis with focus on Acme Inc. and TechGiant\",\"Schedule 30-minute rehearsal with marketing team on April 12 at 2pm\",\"Book main conference room from 10-11am on April 15\",\"Send presentation to John for executive pre-review by April 13\",\"Prepare one-page handout with key metrics (20 copies)\",\"Confirm A/V equipment with IT department on April 14\"]}]");
+
+            // Academic Task - Keep existing
+            sb.AppendLine("\nExample 2: Academic Task");
+            sb.AppendLine("[TASK:{\"title\":\"Complete research paper on renewable energy impact\",\"description\":\"Research, outline, and write a 15-page paper on recent innovations in renewable energy technologies with focus on practical applications in urban environments. Include at least 12 scholarly sources and prepare for submission to Professor Williams.\",\"priority\":5,\"dueDate\":\"2025-04-18\",\"subtasks\":[\"Define research question and thesis statement\",\"Gather and organize sources from academic journals\",\"Create detailed outline with section headers\",\"Write first draft focusing on content over style\",\"Create data visualizations and diagrams\",\"Revise draft for clarity and argument strength\",\"Format citations according to APA style\",\"Proofread final document for grammar and spelling\",\"Prepare accompanying presentation slides\"]}]");
+
+            // Home/Garden - Updated with more specificity
+            sb.AppendLine("\nExample 3: Home Task");
+            sb.AppendLine("[TASK:{\"title\":\"Reorganize home office on Saturday, April 12, 9am-2pm\",\"description\":\"Transform home office into a more functional workspace by reorganizing furniture, installing new shelving, and implementing cable management system. Budget: $250 for supplies from Home Depot.\",\"priority\":3,\"dueDate\":\"2025-04-12\",\"subtasks\":[\"Measure office dimensions and create layout sketch by April 5\",\"Order 3 IKEA KALLAX shelving units (white) by April 7\",\"Purchase cable management kit and desk organizers from Home Depot by April 9\",\"Back up computer files to external drive on April 11 evening\",\"Begin at 9am: clear all items from current desk and shelves\",\"11am: Assemble and install new shelving units against north wall\",\"12pm: Lunch break and assess progress\",\"12:30pm: Reorganize books by category and set up new filing system\",\"1pm: Install cable management system and reconnect all equipment\",\"Take before/after photos for home improvement journal\"]}]");
+
+            // Professional Communication
+            sb.AppendLine("\nExample 4: Professional Communication Task");
+            sb.AppendLine("[TASK:{\"title\":\"Prepare strategic discussion with CEO about department reorganization\",\"description\":\"Develop comprehensive presentation and talking points for one-on-one meeting with CEO to discuss proposed reorganization of marketing department, including staffing changes, budget implications, and expected performance improvements.\",\"priority\":5,\"dueDate\":\"2025-03-27\",\"subtasks\":[\"Analyze current department structure and identify inefficiencies\",\"Research competitor organizational structures for benchmarking\",\"Create new org chart with clear reporting lines\",\"Develop detailed transition plan with timeline\",\"Prepare cost analysis comparing current vs. proposed structure\",\"Identify potential risks and prepare mitigation strategies\",\"Create one-page executive summary of key benefits\",\"Prepare slide deck with visual representations of changes\",\"Anticipate challenging questions and prepare responses\",\"Schedule preliminary discussion with HR director for feedback\"]}]");
+
+            // Health/Fitness - Updated to be more specific
+            sb.AppendLine("\nExample 5: Health Task");
+            sb.AppendLine("[TASK:{\"title\":\"Complete 4-week morning strength training program\",\"description\":\"Follow a structured 30-minute morning strength workout on Monday, Wednesday, and Friday at 6:30am using home equipment (dumbbells, resistance bands) to improve upper body strength and posture.\",\"priority\":4,\"dueDate\":\"2025-04-28\",\"subtasks\":[\"Monday 6:30-7:00am: Upper body routine - 3 sets each of push-ups, dumbbell rows, and shoulder presses\",\"Wednesday 6:30-7:00am: Core focused routine - planks, Russian twists, and resistance band pulls\",\"Friday 6:30-7:00am: Full body workout - squats, lunges, and compound movements\",\"Prepare workout clothes and equipment the night before each session\",\"Drink 16oz water before each workout\",\"Track progress in fitness journal with weights and reps after each session\",\"Take progress photos every Sunday morning\",\"Adjust workout difficulty on April 14 based on first two weeks' progress\"]}]");
+
+            // Personal Finance
+            sb.AppendLine("\nExample 6: Financial Planning Task");
+            sb.AppendLine("[TASK:{\"title\":\"Create comprehensive retirement savings plan\",\"description\":\"Analyze current finances, research options, and develop a detailed retirement savings strategy including investment allocations, contribution schedules, and tax optimization approaches to meet retirement goal of $1.5M by age 60.\",\"priority\":4,\"dueDate\":\"2025-04-30\",\"subtasks\":[\"Calculate retirement needs based on desired lifestyle\",\"Review current retirement account balances and performance\",\"Research tax-advantaged account options (401k, IRA, HSA)\",\"Compare fees and returns across investment platforms\",\"Create monthly contribution schedule with auto-payments\",\"Determine optimal asset allocation based on age and risk tolerance\",\"Set up automatic portfolio rebalancing\",\"Consult with financial advisor on tax optimization strategies\",\"Create annual review process to adjust plan as needed\"]}]");
+
+            // Family/Parenting
+            sb.AppendLine("\nExample 7: Family Task");
+            sb.AppendLine("[TASK:{\"title\":\"Plan educational summer activities for children\",\"description\":\"Research and schedule enriching summer activities for two children (ages 8 and 11) that balance fun, learning, and physical activity while accommodating parents' work schedules. Focus on STEM, creative arts, and outdoor adventures.\",\"priority\":3,\"dueDate\":\"2025-05-15\",\"subtasks\":[\"Research available summer camps and programs in the area\",\"Interview children about their interests and preferences\",\"Create calendar of registration deadlines and program dates\",\"Budget for program costs and materials\",\"Coordinate with other parents for potential carpooling\",\"Schedule family weekend activities to complement programs\",\"Research rainy day educational activities and resources\",\"Prepare materials for at-home science experiments\",\"Create reading list with library visit schedule\"]}]");
+
+            // Travel Planning
+            sb.AppendLine("\nExample 8: Travel Task");
+            sb.AppendLine("[TASK:{\"title\":\"Plan 10-day family trip to Italy\",\"description\":\"Research, budget, and create detailed itinerary for family vacation to Italy covering Rome, Florence, and Venice with focus on historical sites, authentic food experiences, and family-friendly activities for two adults and two teenagers.\",\"priority\":3,\"dueDate\":\"2025-06-01\",\"subtasks\":[\"Research flight options and book tickets for best value\",\"Compare hotels, apartments, and B&Bs in each city\",\"Create day-by-day itinerary with attraction tickets\",\"Research transportation between cities (train vs. rental car)\",\"Make restaurant reservations for special meals\",\"Book guided tours for major historical sites\",\"Purchase travel insurance with medical coverage\",\"Create packing list for each family member\",\"Prepare digital and physical copies of important documents\",\"Download offline maps and translation apps\"]}]");
+
+            // Task Awareness Section (keep existing)
+            sb.AppendLine("\n## TASK AWARENESS");
+            sb.AppendLine("You will receive information about the user's tasks in these formats:");
+
+            sb.AppendLine("\n1. At the beginning of a conversation, you'll receive a [CONTEXT_DATA] section with all active tasks");
+            sb.AppendLine("2. When user mentions tasks using @TaskName syntax, you'll see [TASK:{...json data...}] after the mention");
+
+            sb.AppendLine("\nWhen discussing tasks:");
+            sb.AppendLine("- Reference specific task details (due dates, priorities, subtasks)");
+            sb.AppendLine("- Consider how tasks relate to the user's focus areas and goals");
+            sb.AppendLine("- You can suggest prioritization based on due dates and importance");
+            sb.AppendLine("- Acknowledge dependencies or relationships between mentioned tasks");
+
+            sb.AppendLine("\nWhen receiving updates about tasks via [TASK_CONTEXT_UPDATE] sections:");
+            sb.AppendLine("- Be aware of these changes but don't explicitly mention receiving these updates");
+            sb.AppendLine("- Use the latest information in your responses");
+            sb.AppendLine("- If a task mentioned by the user has been completed, gently inform them");
 
             sb.AppendLine("\nProvide concise, specific, and actionable responses. Prioritize clarity and usefulness in your answers.");
 

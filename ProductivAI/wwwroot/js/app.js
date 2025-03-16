@@ -108,6 +108,52 @@ window.productivAIInterop = {
     }
 };
 
+
+window.setupTaskMentionDetection = function (textAreaElement, dotNetRef) {
+    if (!textAreaElement) return;
+    console.log("Task mention detection setup initialized");
+
+    textAreaElement.addEventListener('input', function () {
+        const cursorPos = this.selectionStart;
+        const text = this.value;
+
+        // Check for @ symbol followed by text
+        const beforeCursor = text.substring(0, cursorPos);
+        const match = beforeCursor.match(/@([^\s]*)$/);
+
+        if (match) {
+            const searchTerm = match[1] || "";
+            const rect = this.getBoundingClientRect();
+            const atPos = beforeCursor.lastIndexOf('@');
+
+            dotNetRef.invokeMethodAsync('OnTaskMentionTyped', searchTerm, {
+                top: rect.top + 30,
+                left: rect.left + 20,
+                mentionStart: atPos,
+                cursorPos: cursorPos
+            });
+        } else {
+            dotNetRef.invokeMethodAsync('HideTaskSuggestions');
+        }
+    });
+};
+
+window.replaceTaskMention = function (textAreaElement, mentionStart, cursorPos, replacement) {
+    if (!textAreaElement) return;
+
+    const text = textAreaElement.value;
+    const newText = text.substring(0, mentionStart) + replacement +
+        text.substring(cursorPos);
+
+    textAreaElement.value = newText;
+    textAreaElement.focus();
+
+    const newCursorPos = mentionStart + replacement.length;
+    textAreaElement.setSelectionRange(newCursorPos, newCursorPos);
+    textAreaElement.dispatchEvent(new Event('input'));
+};
+
+
 // Add this function to find and fix escaped HTML
 window.fixEscapedHtml = function () {
     // Find all elements that might contain escaped HTML task buttons
@@ -258,3 +304,5 @@ window.renderComponent = function (elementId, component) {
 document.addEventListener('DOMContentLoaded', function () {
     console.log("DOM fully loaded - setting up global handlers");
 });
+
+// Task mention detection system

@@ -11,6 +11,7 @@
 @using System.Text.Json
 @using System.Web
 @using System.Text.RegularExpressions
+@using System.Text
 @inject ITaskService TaskService
 @inject ITaskRepository TaskRepository
 @inject OpenRouterAIService AIService
@@ -151,6 +152,24 @@
                     </svg>
                 </div>
             </div>
+            @if (showTaskSuggestions)
+            {
+        <div class="task-suggestions-dropdown" style="position: absolute; top: @(suggestionTop)px; left: @(suggestionLeft)px; z-index: 1000;">
+                    @foreach (var task in suggestedTasks)
+                    {
+                    <div class="task-suggestion-item" @onclick="() => SelectTask(task)" @onclick:preventDefault @onclick:stopPropagation>
+                        <div class="task-title">@task.Title</div>
+                        <div class="task-details">
+                                @if (task.DueDate.HasValue)
+                                {
+                                    <span class="task-due-date">Due: @task.DueDate.Value.ToShortDateString()</span>
+                                }
+                            <span class="task-priority">P@(task.Priority)</span>
+                        </div>
+                    </div>
+                    }
+        </div>
+            }
             <div class="chat-input-container">
                 <div class="chat-input-wrapper">
                     <textarea 
@@ -734,6 +753,42 @@
 
     
 </style>
+<style>
+    .task-suggestions-dropdown {
+        position: absolute;
+        background-color: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--border-radius);
+        max-width: 300px;
+        width: auto;
+        max-height: 300px;
+        overflow-y: auto;
+        z-index: 1000;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .task-suggestion-item {
+        padding: 0.75rem;
+        cursor: pointer;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .task-suggestion-item:hover {
+        background-color: var(--bg-surface);
+    }
+
+    .task-suggestion-item .task-title {
+        font-weight: 600;
+    }
+
+    .task-suggestion-item .task-details {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        display: flex;
+        gap: 0.75rem;
+        margin-top: 0.25rem;
+    }
+</style>
 @code {
     // Task-related properties
     private List<TaskItem> tasks;
@@ -783,6 +838,22 @@
     private bool autoScroll = true;
     private bool showScrollButton = false;
 
+
+
+    private bool showTaskSuggestions = false;
+    private List<TaskItem> suggestedTasks = new List<TaskItem>();
+    private Dictionary<Guid, TaskItem> mentionedTasks = new Dictionary<Guid, TaskItem>();
+    private int mentionStartPos = 0;
+    private int mentionCursorPos = 0;
+    private double suggestionTop = 0;
+    private double suggestionLeft = 0;
+
+
+    private bool _taskUpdatePending = false;
+    private DateTime _lastTaskUpdate = DateTime.MinValue;
+
+    private List<TaskItem> _cachedTasks = null;
+    private DateTime _lastTaskCacheTime = DateTime.MinValue;
     // User context setup with proper defaults
     private UserContext userContext = new UserContext
         {
@@ -825,29 +896,216 @@
         {
             Console.WriteLine("No saved conversation found or loading failed");
             // Add welcome message if no history
-            AddWelcomeMessage();
+            await InitializeChatWithContextAsync();
         }
 
         await LoadTasksAsync();
     }
-    private void AddWelcomeMessage()
+
+    private async Task UpdateAIWithLatestTasksAsync()
     {
+        // Get all active tasks
+        var activeTasks = await TaskService.GetActiveTasksAsync();
+
+        // Format context update message
+        var contextBuilder = new StringBuilder();
+        contextBuilder.AppendLine("\n[CONTEXT_UPDATE]");
+        contextBuilder.AppendLine("## LATEST TASKS");
+
+        if (activeTasks.Any())
+        {
+            foreach (var task in activeTasks)
+            {
+                contextBuilder.AppendLine($"- Task: {task.Title}");
+
+                if (!string.IsNullOrEmpty(task.Description))
+                    contextBuilder.AppendLine($"  Description: {task.Description}");
+
+                if (task.DueDate.HasValue)
+                    contextBuilder.AppendLine($"  Due Date: {task.DueDate.Value:yyyy-MM-dd}");
+
+                contextBuilder.AppendLine($"  Priority: {task.Priority}");
+
+                // Add subtasks if any
+                if (task.SubTasks.Any())
+                {
+                    contextBuilder.AppendLine("  Subtasks:");
+                    foreach (var subtask in task.SubTasks)
+                    {
+                        contextBuilder.AppendLine($"    - {subtask.Description} {(subtask.IsCompleted ? "(Completed)" : "")}");
+                    }
+                }
+
+                contextBuilder.AppendLine();
+            }
+        }
+        else
+        {
+            contextBuilder.AppendLine("No active tasks");
+        }
+
+        contextBuilder.AppendLine("[/CONTEXT_UPDATE]");
+
+        // Add an invisible system message to conversation history
+        var updateMessage = new MessageHistory
+            {
+                Content = contextBuilder.ToString(),
+                IsUserMessage = false,
+                Timestamp = DateTime.Now,
+                // Flag as a system message (not shown to user)
+                IsSystemMessage = true  // You'll need to add this property to MessageHistory class
+            };
+
+        conversationHistory.Add(updateMessage);
+        await ConversationService.SaveActiveConversationAsync(conversationHistory);
+
+        // Don't add this message to the UI messages list
+    }
+    private async Task InitializeChatWithContextAsync()
+    {
+        // Get all active tasks
+        var activeTasks = await TaskService.GetActiveTasksAsync();
+
+        // Format welcome message for user display
         var welcomeMessage = "Hello! I'm your ProductivAI assistant. How can I help you today?";
 
+        // Create message for display to user (normal welcome message)
         messages.Add(new ChatMessage
             {
                 Content = welcomeMessage,
                 IsFromUser = false
             });
 
+        // Format detailed context for AI with task information
+        var contextBuilder = new StringBuilder();
+        contextBuilder.AppendLine(welcomeMessage);
+
+        // Add invisible section with task data
+        contextBuilder.AppendLine("\n[CONTEXT_DATA]");
+
+        // Add user context information
+        contextBuilder.AppendLine("\n## USER CONTEXT");
+        contextBuilder.AppendLine($"Work Description: {userContext.WorkDescription}");
+        contextBuilder.AppendLine($"Focus Areas: {string.Join(", ", userContext.FocusAreas)}");
+        contextBuilder.AppendLine($"Long-term Goals: {string.Join(", ", userContext.LongTermGoals)}");
+        contextBuilder.AppendLine("\n## TASK CONTEXT UPDATES");
+        contextBuilder.AppendLine("You will automatically receive updates when the user's tasks change.");
+        contextBuilder.AppendLine("These updates will appear in [TASK_CONTEXT_UPDATE] sections.");
+        contextBuilder.AppendLine("When you receive these updates, you should acknowledge them internally and");
+        contextBuilder.AppendLine("be aware of the latest task statuses, but don't mention receiving these updates.");
+
+        // Add task information
+        contextBuilder.AppendLine("\n## ACTIVE TASKS");
+
+        if (activeTasks.Any())
+        {
+            foreach (var task in activeTasks)
+            {
+                // Add basic task info
+                contextBuilder.AppendLine($"- Task: {task.Title}");
+
+                if (!string.IsNullOrEmpty(task.Description))
+                    contextBuilder.AppendLine($"  Description: {task.Description}");
+
+                if (task.DueDate.HasValue)
+                    contextBuilder.AppendLine($"  Due Date: {task.DueDate.Value:yyyy-MM-dd}");
+
+                contextBuilder.AppendLine($"  Priority: {task.Priority}");
+
+                // Add subtasks if any
+                if (task.SubTasks.Any())
+                {
+                    contextBuilder.AppendLine("  Subtasks:");
+                    foreach (var subtask in task.SubTasks)
+                    {
+                        contextBuilder.AppendLine($"    - {subtask.Description} {(subtask.IsCompleted ? "(Completed)" : "")}");
+                    }
+                }
+
+                contextBuilder.AppendLine();
+            }
+        }
+        else
+        {
+            contextBuilder.AppendLine("No active tasks");
+        }
+
+        contextBuilder.AppendLine("[/CONTEXT_DATA]");
+
+        // Store enhanced context in conversation history (only AI will see this)
         conversationHistory.Add(new MessageHistory
             {
-                Content = welcomeMessage,
+                Content = contextBuilder.ToString(),
                 IsUserMessage = false,
                 Timestamp = DateTime.Now
             });
+
+        // Save the history with enhanced context
+        await ConversationService.SaveActiveConversationAsync(conversationHistory);
+    }
+    private async Task VerifyConversationHistoryAsync()
+    {
+        if (conversationHistory == null || conversationHistory.Count == 0)
+        {
+            Console.WriteLine("Warning: Empty conversation history detected, initializing new conversation");
+            await InitializeChatWithContextAsync();
+            return;
+        }
+
+        // Check if we need to add a summary for a long conversation
+        if (conversationHistory.Count > 20)
+        {
+            await AddConversationSummaryAsync();
+        }
+
+        // Ensure consistent timestamps
+        for (int i = 0; i < conversationHistory.Count; i++)
+        {
+            if (conversationHistory[i].Timestamp == default)
+            {
+                conversationHistory[i].Timestamp = DateTime.Now.AddMinutes(-conversationHistory.Count + i);
+            }
+        }
+
+        Console.WriteLine($"Conversation history verified: {conversationHistory.Count} messages");
     }
 
+    // This method adds a conversation summary
+    private async Task AddConversationSummaryAsync()
+    {
+        try
+        {
+            // Only summarize if we have an active conversation
+            if (conversationHistory.Count < 10) return;
+
+            // Get a summary from the AI service
+            string summary = await AIService.GenerateConversationSummaryAsync(conversationHistory);
+
+            if (!string.IsNullOrEmpty(summary))
+            {
+                // Create a system message with the summary
+                var summaryMessage = new MessageHistory
+                    {
+                        Content = $"[CONVERSATION_SUMMARY] {summary} [/CONVERSATION_SUMMARY]",
+                        IsUserMessage = false,
+                        IsSystemMessage = true,
+                        Timestamp = DateTime.Now
+                    };
+
+                // Insert after the welcome message but before other messages
+                conversationHistory.Insert(Math.Min(1, conversationHistory.Count), summaryMessage);
+
+                // Save updated conversation history
+                await ConversationService.SaveActiveConversationAsync(conversationHistory);
+
+                Console.WriteLine("Added conversation summary to history");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error adding conversation summary: {ex.Message}");
+        }
+    }
     // Track expanded state for reasoning sections
     private bool expandedReasoning = false;
     private Dictionary<ChatMessage, bool> reasoningExpandedStates = new Dictionary<ChatMessage, bool>();
@@ -900,12 +1158,85 @@
         {
             // Store a reference to this component in JavaScript
             await JSRuntime.InvokeVoidAsync("eval", @"
-            document.addEventListener('click', function(e) {
-                if (e.target && e.target.classList.contains('task-action-button')) {
-                    DotNet.invokeMethodAsync('ProductivAI', 'ShowTaskModal');
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.classList.contains('task-action-button')) {
+                DotNet.invokeMethodAsync('ProductivAI', 'ShowTaskModal');
+            }
+        });
+
+        // Define the missing setupTaskMentionDetection function
+ window.setupTaskMentionDetection = function(textAreaElement, dotNetRef) {
+    if (!textAreaElement) return;
+
+    // Debounce function - executes after user stops typing
+    let timeout = null;
+    let lastSearchTerm = null;
+    let mentionActive = false;
+
+    textAreaElement.addEventListener('input', function() {
+        // Clear timeout on each keystroke
+        clearTimeout(timeout);
+
+        // Set new timeout (250ms delay)
+        timeout = setTimeout(() => {
+            const cursorPos = this.selectionStart;
+            const text = this.value;
+
+            // Just check text around cursor position (20 chars) - not the entire message
+            const searchArea = text.substring(Math.max(0, cursorPos - 20), cursorPos);
+            const match = searchArea.match(/@([^\s]*)$/);
+
+            if (match) {
+                const searchTerm = match[1] || '';
+
+                // Only process if term changed - prevents redundant calls
+                if (!mentionActive || searchTerm !== lastSearchTerm) {
+                    mentionActive = true;
+                    lastSearchTerm = searchTerm;
+
+                    // Calculate exact position only when needed
+                    const rect = this.getBoundingClientRect();
+                    const fullBeforeCursor = text.substring(0, cursorPos);
+                    const atPos = fullBeforeCursor.lastIndexOf('@');
+
+                    dotNetRef.invokeMethodAsync('OnTaskMentionTyped', searchTerm, {
+                        top: Math.round(rect.top) + 30,
+                        left: Math.round(rect.left) + 20,
+                        mentionStart: atPos,
+                        cursorPos: cursorPos
+                    });
                 }
-            });
-        ");
+            } else if (mentionActive) {
+                mentionActive = false;
+                lastSearchTerm = null;
+                dotNetRef.invokeMethodAsync('HideTaskSuggestions');
+            }
+        }, 250); // Adjust delay as needed (250ms is a good balance)
+    });
+};
+
+        // Define the missing replaceTaskMention function
+        window.replaceTaskMention = function(textAreaElement, mentionStart, cursorPos, replacement) {
+            if (!textAreaElement) return;
+
+            const text = textAreaElement.value;
+            const newText = text.substring(0, mentionStart) + replacement + 
+                           text.substring(cursorPos);
+
+            textAreaElement.value = newText;
+            textAreaElement.focus();
+
+            const newCursorPos = mentionStart + replacement.length;
+            textAreaElement.setSelectionRange(newCursorPos, newCursorPos);
+            textAreaElement.dispatchEvent(new Event('input'));
+        };
+
+        console.log('Task mention functions defined directly');
+    ");
+
+            // Now call the function we just defined
+            await JSRuntime.InvokeVoidAsync("setupTaskMentionDetection",
+                textAreaRef, DotNetObjectReference.Create(this));
 
             // Setup scroll handler 
             await JSRuntime.InvokeVoidAsync("setupChatScroll",
@@ -952,6 +1283,88 @@
     }
 
 
+    [JSInvokable]
+    public async Task OnTaskMentionTyped(string searchTerm, object position)
+    {
+        try
+        {
+            // Skip processing if search term is just 1 character
+            if (searchTerm?.Length == 1) return;
+
+            // Get position data
+            var positionJson = System.Text.Json.JsonSerializer.Serialize(position);
+            using JsonDocument doc = JsonDocument.Parse(positionJson);
+            JsonElement root = doc.RootElement;
+
+            // Extract position values (using TryGet to prevent exceptions)
+            suggestionTop = root.TryGetProperty("top", out var topElement) ? topElement.GetDouble() : 0;
+            suggestionLeft = root.TryGetProperty("left", out var leftElement) ? leftElement.GetDouble() : 0;
+            mentionStartPos = root.TryGetProperty("mentionStart", out var startElement) ? startElement.GetInt32() : 0;
+            mentionCursorPos = root.TryGetProperty("cursorPos", out var cursorElement) ? cursorElement.GetInt32() : 0;
+
+            // Cache tasks for 30 seconds to avoid frequent DB queries
+            if (_cachedTasks == null || (DateTime.Now - _lastTaskCacheTime).TotalSeconds > 30)
+            {
+                _cachedTasks = (await TaskService.GetActiveTasksAsync()).ToList();
+                _lastTaskCacheTime = DateTime.Now;
+            }
+
+            // Optimize filtering with cached values and lowercase comparison
+            if (string.IsNullOrEmpty(searchTerm))
+            {
+                // Show all tasks when no search term
+                suggestedTasks = _cachedTasks.Take(5).ToList();
+            }
+            else
+            {
+                string searchTermLower = searchTerm.ToLowerInvariant();
+                suggestedTasks = _cachedTasks
+                    .Where(t => t.Title.ToLowerInvariant().Contains(searchTermLower))
+                    .Take(5)
+                    .ToList();
+            }
+
+            showTaskSuggestions = suggestedTasks.Any();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error in OnTaskMentionTyped: {ex.Message}");
+            showTaskSuggestions = false;
+        }
+
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void HideTaskSuggestions()
+    {
+        showTaskSuggestions = false;
+        StateHasChanged();
+    }
+
+    private async Task SelectTask(TaskItem task)
+    {
+        try
+        {
+            // Format display text (just the mention, not the full data)
+            string displayText = $"@{task.Title}";
+
+            // Replace @mention in textarea
+            await JSRuntime.InvokeVoidAsync("replaceTaskMention",
+                textAreaRef, mentionStartPos, mentionCursorPos, displayText);
+
+            // Store task for later use
+            mentionedTasks[task.Id] = task;
+
+            // Hide suggestions immediately before other operations
+            showTaskSuggestions = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error selecting task: {ex.Message}");
+        }
+    }
     private async Task DisableShortcutsAsync()
     {
         await JSRuntime.InvokeVoidAsync("shortcutsManager.setTypingState", true);
@@ -963,6 +1376,10 @@
     }
     public void Dispose()
     {
+
+
+        // Unsubscribe from events
+        TaskService.TasksChanged -= OnTasksChanged;
         cts?.Cancel();
         cts?.Dispose();
     }
@@ -976,7 +1393,106 @@
         public List<string> FocusAreas { get; set; } = new List<string>();
         public string PreferredModel { get; set; } = "qwen32b";
     }
+    private void OnTasksChanged()
+    {
+        // Set a flag indicating update is needed
+        // We'll use debouncing to prevent excessive updates
+        _taskUpdatePending = true;
 
+        // Schedule async update
+        _ = UpdateTaskContextIfNeededAsync();
+    }
+    private async Task UpdateTaskContextIfNeededAsync()
+    {
+        try
+        {
+            // If no pending update or update was recent (last 10 seconds), skip
+            if (!_taskUpdatePending || (DateTime.Now - _lastTaskUpdate).TotalSeconds < 10)
+                return;
+
+            // Wait a moment for multiple rapid changes to accumulate
+            await Task.Delay(2000);
+
+            // Only proceed if we're still pending
+            if (!_taskUpdatePending)
+                return;
+
+            // Clear pending flag
+            _taskUpdatePending = false;
+
+            // Don't update if chat is not active or streaming
+            if (isStreaming || messages.Count <= 1)
+                return;
+
+            // Update the time of the last update
+            _lastTaskUpdate = DateTime.Now;
+
+            // Create task context update and send to AI
+            await CreateAndSendTaskContextUpdateAsync();
+
+            Console.WriteLine("Task context automatically updated");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating task context: {ex.Message}");
+        }
+    }
+
+    // Add this method to create and send task context
+    private async Task CreateAndSendTaskContextUpdateAsync()
+    {
+        // Get all active tasks
+        var activeTasks = await TaskService.GetActiveTasksAsync();
+
+        // Format context update message (invisible to user)
+        var contextBuilder = new StringBuilder();
+        contextBuilder.AppendLine("\n[TASK_CONTEXT_UPDATE]");
+
+        if (activeTasks.Any())
+        {
+            contextBuilder.AppendLine($"You now have {activeTasks.Count()} active tasks:");
+
+            foreach (var task in activeTasks)
+            {
+                // Format as JSON to be consistent with task mentions
+                var taskData = new
+                {
+                    id = task.Id.ToString(),
+                    title = task.Title,
+                    description = task.Description,
+                    dueDate = task.DueDate?.ToString("yyyy-MM-dd"),
+                    priority = task.Priority,
+                    isCompleted = task.IsCompleted,
+                    subtasks = task.SubTasks?.Select(st => new
+                    {
+                        description = st.Description,
+                        isCompleted = st.IsCompleted
+                    }).ToList()
+                };
+
+                string taskJson = JsonSerializer.Serialize(taskData);
+                contextBuilder.AppendLine($"[TASK:{taskJson}]");
+            }
+        }
+        else
+        {
+            contextBuilder.AppendLine("You have no active tasks.");
+        }
+
+        contextBuilder.AppendLine("[/TASK_CONTEXT_UPDATE]");
+
+        // Add as a system message (invisible to user)
+        conversationHistory.Add(new MessageHistory
+            {
+                Content = contextBuilder.ToString(),
+                IsUserMessage = false,
+                IsSystemMessage = true, // Add this property to MessageHistory class
+                Timestamp = DateTime.Now
+            });
+
+        // Save updated conversation
+        await ConversationService.SaveActiveConversationAsync(conversationHistory);
+    }
     // Methods for settings
     private void AddFocusArea()
     {
@@ -999,6 +1515,8 @@
     {
         base.OnInitialized();
         CurrentInstance = this;
+        TaskService.TasksChanged += OnTasksChanged;
+
     }
     [JSInvokable]
     public static Task ShowTaskModal()
@@ -1426,24 +1944,65 @@
         if (string.IsNullOrWhiteSpace(currentMessage) || isStreaming)
             return;
 
-        // Add user message
+        // Original user input for display
         var userInput = currentMessage.Trim();
+
+        // Create a processed version of the input with task data
+        string processedInput = userInput;
+        await VerifyConversationHistoryAsync();
+        // Find task mentions using regex (@TaskName)
+        foreach (Match match in Regex.Matches(userInput, @"@([^\s]+)"))
+        {
+            string mentionText = match.Value;
+            string taskTitle = match.Groups[1].Value;
+
+            // Find the mentioned task in our dictionary
+            var matchingTask = mentionedTasks.Values
+                .FirstOrDefault(t => t.Title.Equals(taskTitle, StringComparison.OrdinalIgnoreCase));
+
+            if (matchingTask != null)
+            {
+                // Format task data as JSON
+                var taskData = new
+                {
+                    id = matchingTask.Id.ToString(),
+                    title = matchingTask.Title,
+                    description = matchingTask.Description,
+                    dueDate = matchingTask.DueDate?.ToString("yyyy-MM-dd"),
+                    priority = matchingTask.Priority,
+                    isCompleted = matchingTask.IsCompleted,
+                    subTasks = matchingTask.SubTasks?.Select(st => new
+                    {
+                        description = st.Description,
+                        isCompleted = st.IsCompleted
+                    }).ToList()
+                };
+
+                string taskJson = JsonSerializer.Serialize(taskData);
+
+                // Replace with format that preserves visible mention but adds data for AI
+                // The AI will see the JSON data but users only see the @mention
+                processedInput = processedInput.Replace(
+                    mentionText,
+                    $"{mentionText}[TASK:{taskJson}]");
+            }
+        }
+
+        // Add user message with original content (for display)
         var userMessage = new ChatMessage
             {
-                Content = userInput,
+                Content = userInput, // Original for display
                 IsFromUser = true
             };
 
         messages.Add(userMessage);
-        // After adding user message to messages list
 
-
-        // Add to conversation history
+        // Add to conversation history with processed input (includes task data for AI)
         conversationHistory.Add(new MessageHistory
             {
-                Content = userInput,
+                Content = processedInput, // Enhanced with task data for AI
                 IsUserMessage = true,
-                Timestamp = DateTime.Now // Add timestamp
+                Timestamp = DateTime.Now
             });
 
         // Save after adding user message
@@ -1471,9 +2030,9 @@
 
         try
         {
-            // Process with AI and stream the response
+            // Process with AI and stream the response - now with task data included
             await AIService.ProcessQueryWithStreamingWithHistoryAsync(
-                userInput,
+                processedInput, // Send the enhanced input with task data to AI
                 userContext,
                 conversationHistory,
                 async (token, isComplete) =>
