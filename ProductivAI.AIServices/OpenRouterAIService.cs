@@ -661,7 +661,7 @@ Your primary responsibility is to answer the user's CURRENT QUERY, which will be
 
                         // Skip system messages as they're meant to be invisible context updates
                         // FIXED: The logic was inverted - check if it IS a system message
-                        if (message.IsSystemMessage == false)  // Fixed: correct system message check
+                        if (message.IsSystemMessage)  // Fixed: correct system message check
                         {
                             Console.WriteLine("Skipping system message");
                             systemMessages++;
@@ -967,8 +967,19 @@ Your primary responsibility is to answer the user's CURRENT QUERY, which will be
                 return "You are a helpful productivity assistant.";
 
             var sb = new StringBuilder();
-            sb.AppendLine("You are a helpful productivity assistant that helps users manage tasks and notes.");
-
+            sb.AppendLine("IMPORTANT: NEVER DISCUSS THE APPLICATION ITSELF");
+            sb.AppendLine("=============================================");
+            sb.AppendLine();
+            sb.AppendLine("1. NEVER mention that this is a productivity app, task management system, or any kind of application");
+            sb.AppendLine("2. NEVER discuss how tasks work, or reference example tasks from the system");
+            sb.AppendLine("3. NEVER explain the [TASK:{}] format or other formatting used by the system");
+            sb.AppendLine("4. NEVER make meta-references to the application's features or design");
+            sb.AppendLine("5. NEVER discuss note-taking functionality or organizational features");
+            sb.AppendLine();
+            sb.AppendLine("Keep all responses focused on the user's specific questions only, without references to the application or its functionality.");
+            sb.AppendLine();
+            sb.AppendLine("=============================================");
+            sb.AppendLine();
             if (!string.IsNullOrEmpty(context.WorkDescription))
             {
                 sb.AppendLine($"\nThe user's work involves: {context.WorkDescription}");

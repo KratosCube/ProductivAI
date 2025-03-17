@@ -97,12 +97,10 @@
                         {
                                         <div class="text-balance whitespace-pre-wrap break-words bg-amber-50 p-3 rounded-md border border-amber-200 mb-3">
                                             <div class="text-xs text-amber-700 font-semibold mb-1">Reasoning:</div>
-                                @((MarkupString)FormatMessageContent(message.ReasoningContent))
                                         </div>
                         }
 
                                 <div class="text-balance whitespace-pre-wrap break-words">
-                            @((MarkupString)FormatMessageContent(message.Content))
                                 </div>
                             </div>
                         </div>
@@ -125,12 +123,10 @@
                         {
                                         <div class="text-balance whitespace-pre-wrap break-words bg-amber-50 p-3 rounded-md border border-amber-200 mb-3">
                                             <div class="text-xs text-amber-700 font-semibold mb-1">Reasoning:</div>
-                                @((MarkupString)FormatMessageContent(currentReasoningContent))
                                         </div>
                         }
 
                                 <div class="text-balance whitespace-pre-wrap break-words">
-                            @((MarkupString)FormatMessageContent(currentStreamedContent))
                                     <div class="typing-indicator inline-flex items-center h-4 mt-1 ml-1">
                                         <span></span>
                                         <span></span>
@@ -406,10 +402,7 @@
         }
     }
 
-    private string FormatMessageContent(string content)
-    {
-        return MessageFormatter.FormatMessageContent(content);
-    }
+
 
     private bool ShouldPreventEnterKey(KeyboardEventArgs e)
     {

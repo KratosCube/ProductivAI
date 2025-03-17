@@ -1813,7 +1813,16 @@ input:checked + .slider:before {
     margin-top: 4px;
     font-size: 14px;
 }
-
+/* Add to your app.css file */
+.task-placeholder {
+    background-color: rgba(0, 0, 0, 0.2);
+    border: 1px dashed var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 0.75rem;
+    margin: 0.75rem 0;
+    color: var(--text-secondary);
+    font-style: italic;
+}
 .priority-label {
     color: var(--text-secondary);
 }

@@ -63,21 +63,20 @@ public class MessageFormattingService
     }
 
     // Keep a simple formatter for cases where you don't need task extraction
-    public string FormatMessageContent(string content)
+    public string FormatMessageContentWithoutTaskExtraction(string content)
     {
         if (string.IsNullOrEmpty(content))
             return "";
 
-        content = content.Trim();
-        content = Regex.Replace(content, @"\n{2,}", "\n");
-        content = Regex.Replace(content, @"(\r\n|\r|\n)", "\n");
+        // Temporarily replace task markers with placeholders during streaming
+        content = Regex.Replace(content, @"\[TASK:(\{.*?\})\]", "[Task suggestion being generated...]");
 
+        // Format as normal
         var pipeline = new MarkdownPipelineBuilder()
             .UseAdvancedExtensions()
             .Build();
 
         string html = Markdown.ToHtml(content, pipeline);
-
         html = Regex.Replace(html, @"<p>\s*</p>", "");
         html = Regex.Replace(html, @"<br>\s*<br>", "<br>");
 
