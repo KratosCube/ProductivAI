@@ -70,7 +70,35 @@
                                                     <div class="message-content">
                                         @((MarkupString)message.FormattedContent)
                                                     </div>
+                                    @if (!message.IsFromUser && message.HasReasoning && showReasoning)
+                                    {
+                                        var reasoningState = reasoningExpandedStates.ContainsKey(message) ? reasoningExpandedStates[message] : false;
 
+                <div class="reasoning-container @(reasoningState ? "expanded" : "collapsed")" style="width: 100%; flex-shrink: 0; border: 1px solid #555; padding: 8px; margin-top: 8px; border-radius: 6px;">
+                    <div class="reasoning-header" @onclick="() => ToggleMessageReasoningExpansion(message)">
+                        <div class="reasoning-title">
+                            <span>Reasoning</span>
+                        </div>
+                        <button class="expand-button">
+                                                    @if (reasoningState)
+                                                    {
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                                                    }
+                                                    else
+                                                    {
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                                    }
+                        </button>
+                    </div>
+
+                                            @if (reasoningState)
+                                            {
+                            <div class="reasoning-content" style="padding: 8px; background: rgba(0,0,0,0.1); border-radius: 4px; margin-top: 8px;">
+                                                    @((MarkupString)FormatMessageContentWithoutTaskExtraction(message.ReasoningContent))
+                            </div>
+                                            }
+                </div>
+                                    }
                                     @if (!message.IsFromUser && message == messages.Last() && !isStreaming && extractedTasks.Any())
                                     {
                                         @foreach (var task in extractedTasks)
@@ -84,18 +112,12 @@
                                                                                 OnShowModal="@((TaskSuggestion t) => ShowTaskModalWithData(t))" />
                                         }
                                     }
-                                    @if (extractedTaskEdits.Any())
+                                    @foreach (var taskEdit in extractedTaskEdits)
                                     {
-                                        @foreach (var taskEdit in extractedTaskEdits)
-                                        {
-                                            @if (taskEdit.Original != null)
-                                            {
-                                        <TaskEditSuggestionComponent
-                                            OriginalTask="@taskEdit.Original"
-                                            EditedTask="@taskEdit.Edited"
-                                            OnShowModal="@((data) => ShowTaskComparisonModal(data))" />
-                                            }
-                                        }
+                <TaskEditSuggestionComponent
+                    OriginalId="@taskEdit.OriginalId"
+                    EditedTask="@taskEdit.Edited"
+                    OnShowModal="@((data) => ShowTaskComparisonModal(data))" />
                                     }
                                                 </div>
                                             </div>
@@ -110,42 +132,40 @@
                                                     </div>
                                                 </div>
                                                 <div class="message-bubble">
-                                    @if (useReasoning && !string.IsNullOrEmpty(currentReasoningContent))
+                                    @if (useReasoning && showReasoning && !string.IsNullOrEmpty(currentReasoningContent))
                                     {
-                                                                <div class="reasoning-container @(expandedReasoning ? "expanded" : "collapsed")" style="width: 100%; flex-shrink: 0;">
-                                                                    <div class="reasoning-header" @onclick="ToggleReasoningExpansion">
-                                                                        <div class="reasoning-title">
-                                                                            <span>Reasoning</span>
+                <div class="reasoning-container @(expandedReasoning ? "expanded" : "collapsed")" style="width: 100%; flex-shrink: 0; border: 1px solid #555; padding: 8px; margin-bottom: 12px; border-radius: 6px;">
+                    <div class="reasoning-header" @onclick="ToggleReasoningExpansion">
+                        <div class="reasoning-title">
+                            <span>Reasoning</span>
                                                     @if (!expandedReasoning)
                                                     {
-                                                                                        <div class="typing-indicator">
-                                                                                            <span></span>
-                                                                                            <span></span>
-                                                                                            <span></span>
-                                                                                        </div>
+                                    <div class="typing-indicator">
+                                        <span></span>
+                                        <span></span>
+                                        <span></span>
+                                    </div>
                                                     }
-                                                                        </div>
-                                                                        <button class="expand-button">
+                        </div>
+                        <button class="expand-button">
                                                     @if (expandedReasoning)
                                                     {
-                                                                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
                                                     }
                                                     else
                                                     {
-                                                                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                                     }
-                                                                        </button>
-                                                                    </div>
-                                            @foreach (var message in messages)
+                        </button>
+                    </div>
+
+                                            @if (expandedReasoning)
                                             {
-                                                @if (expandedReasoning)
-                                                {
-                            <div class="reasoning-content">
-                                                        @((MarkupString) FormatMessageContent(message.Content))
+                            <div class="reasoning-content" style="padding: 8px; background: rgba(0,0,0,0.1); border-radius: 4px; margin-top: 8px;">
+                                                    @((MarkupString)FormatMessageContentWithoutTaskExtraction(currentReasoningContent))
                             </div>
-                                                }
                                             }
-                                                                </div>
+                </div>
                                     }
                                                     <div class="message-content">
                                         @((MarkupString)FormatMessageContentWithoutTaskExtraction(currentStreamedContent))
@@ -979,41 +999,34 @@
 
     // Combined lifecycle methods
     protected override async Task OnInitializedAsync()
+{
+    // Load existing conversation if any
+    var savedHistory = await ConversationService.LoadActiveConversationAsync();
+
+    if (savedHistory != null && savedHistory.Any())
     {
-        // Load existing conversation if any
-        var savedHistory = await ConversationService.LoadActiveConversationAsync();
+        conversationHistory = savedHistory;
 
-        if (savedHistory != null && savedHistory.Any())
-        {
-            // Debug output to help diagnose issues
-            Console.WriteLine($"Loaded {savedHistory.Count} messages from storage");
-            foreach (var msg in savedHistory)
+        // Rebuild UI messages from history
+        messages = conversationHistory
+            .Where(m => !m.IsSystemMessage) // Skip system messages
+            .Select(m => new ChatMessage
             {
-                Console.WriteLine($"Message: {(msg.IsUserMessage ? "User" : "AI")}: {msg.Content.Substring(0, Math.Min(20, msg.Content.Length))}...");
-            }
-
-            conversationHistory = savedHistory;
-
-            // Rebuild UI messages from history
-            messages = conversationHistory.Select(m => new ChatMessage
-                {
-                    Content = m.Content,
-                    IsFromUser = m.IsUserMessage,
-                    ReasoningContent = m.ReasoningContent,
-                    HasReasoning = !string.IsNullOrEmpty(m.ReasoningContent)
-                }).ToList();
-
-            Console.WriteLine($"Rebuilt {messages.Count} UI messages");
-        }
-        else
-        {
-            Console.WriteLine("No saved conversation found or loading failed");
-            // Add welcome message if no history
-            await InitializeChatWithContextAsync();
-        }
-
-        await LoadTasksAsync();
+                Content = m.Content,
+                IsFromUser = m.IsUserMessage,
+                ReasoningContent = m.ReasoningContent,
+                HasReasoning = !string.IsNullOrEmpty(m.ReasoningContent),
+                FormattedContent = FormatMessageContent(m.Content)
+            }).ToList();
     }
+    else
+    {
+        // Add welcome message if no history
+        await InitializeChatWithContextAsync();
+    }
+
+    await LoadTasksAsync();
+}
     private List<TaskEditSuggestion> extractedTaskEdits = new();
     private bool showTaskComparisonModal = false;
     private TaskItem originalTask = new();
@@ -2148,6 +2161,7 @@
 
         return html;
     }
+    private bool inReasoningBlock = false;
     private async Task SendMessageAsync()
     {
         var currentDate = DateTime.Now;
@@ -2253,109 +2267,120 @@
 
             // Process with AI and stream the response
             await AIService.ProcessQueryWithStreamingWithHistoryAsync(
-                processedInput,
-                userContext,
-                conversationHistory,
-                async (token, isComplete) =>
-                {
-                    if (!isComplete)
-                    {
-                        // Check if this is a reasoning token
-                        if (token.Contains("[REASONING]") && token.Contains("[/REASONING]"))
-                        {
-                            // Extract the reasoning content
-                            int startIndex = token.IndexOf("[REASONING]");
-                            int endIndex = token.IndexOf("[/REASONING]");
-                            string reasoningContent = token.Substring(
-                            startIndex + "[REASONING]".Length,
-                            endIndex - startIndex - "[REASONING]".Length);
+    processedInput,
+    userContext,
+    conversationHistory,
+    async (token, isComplete) =>
+    {
+        if (!isComplete)
+        {
+            // Extract reasoning content from each token that contains both tags
+            if (token.Contains("[REASONING]") && token.Contains("[/REASONING]"))
+            {
+                // Parse out just the content between the tags
+                int startIndex = token.IndexOf("[REASONING]") + "[REASONING]".Length;
+                int endIndex = token.IndexOf("[/REASONING]");
 
-                            // Add to reasoning content
-                            currentReasoningContent += reasoningContent;
+                if (endIndex > startIndex)
+                {
+                    string reasoningContent = token.Substring(startIndex, endIndex - startIndex);
+                    currentReasoningContent += reasoningContent;
+                    Console.WriteLine($"Added to reasoning: '{reasoningContent}'");
+                }
+            }
+            else
+            {
+                // For display during streaming, remove task markers
+                string displayToken = Regex.Replace(token, @"\[TASK:(\{.*?\})\]", "");
+                displayToken = Regex.Replace(displayToken, @"\[TASK_EDIT:(\{.*?\})\]", "");
+                currentStreamedContent += displayToken;
+            }
+
+            await InvokeAsync(StateHasChanged);
+            await InvokeAsync(ScrollToBottomAsync);
+        }
+        else
+        {
+            // Handle completion...
+            isStreaming = false;
+
+            // Process the full response content for task extraction
+            if (!string.IsNullOrEmpty(currentStreamedContent))
+            {
+                // Create message with both content and reasoning
+                var aiMessage = new ChatMessage
+                    {
+                        Content = currentStreamedContent,
+                        IsFromUser = false,
+                        ReasoningContent = currentReasoningContent,
+                        HasReasoning = !string.IsNullOrEmpty(currentReasoningContent)
+                    };
+
+                // Extract task and task edit suggestions
+                var (formattedHtml, tasks, taskEdits) = MessageFormatter.FormatMessageWithTaskExtraction(currentStreamedContent);
+                aiMessage.FormattedContent = formattedHtml;
+
+                Console.WriteLine($"Streaming complete - Adding message with formatted content length: {formattedHtml?.Length ?? 0}");
+                Console.WriteLine($"Reasoning content length: {currentReasoningContent?.Length ?? 0}");
+
+                // Store extracted tasks
+                extractedTasks.Clear();
+                extractedTasks.AddRange(tasks);
+
+                // Store and process task edits
+                extractedTaskEdits.Clear();
+                extractedTaskEdits.AddRange(taskEdits);
+
+                // Look up original tasks for each edit suggestion
+                foreach (var editSuggestion in extractedTaskEdits)
+                {
+                    Console.WriteLine($"Processing edit suggestion with ID: {editSuggestion.OriginalId}");
+                    if (Guid.TryParse(editSuggestion.OriginalId, out Guid taskId))
+                    {
+                        var originalTask = await TaskService.GetTaskByIdAsync(taskId);
+                        if (originalTask != null)
+                        {
+                            editSuggestion.Original = originalTask;
+                            Console.WriteLine($"Found original task: {originalTask.Title}");
                         }
                         else
                         {
-                            // Regular content token
-
-                            // Add to full content for later task extraction
-                            fullResponseContent += token;
-
-                            // For display during streaming, remove task markers
-                            string displayToken = Regex.Replace(token, @"\[TASK:(\{.*?\})\]", "");
-                            displayToken = Regex.Replace(displayToken, @"\[TASK_EDIT:(\{.*?\})\]", "");
-                            currentStreamedContent += displayToken;
+                            Console.WriteLine($"Could not find original task with ID: {taskId}");
                         }
-
-                        await InvokeAsync(StateHasChanged);
-                        await InvokeAsync(ScrollToBottomAsync);
                     }
-                    else
+                }
+
+                // Add to messages list
+                messages.Add(aiMessage);
+
+                // Add to conversation history with timestamp
+                var historyMessage = new MessageHistory
                     {
-                        if (!string.IsNullOrEmpty(fullResponseContent))
-                        {
-                            // Create message with both content and reasoning
-                            var aiMessage = new ChatMessage
-                                {
-                                    Content = fullResponseContent, // Store the complete content with task markers
-                                    IsFromUser = false,
-                                    ReasoningContent = currentReasoningContent,
-                                    HasReasoning = !string.IsNullOrEmpty(currentReasoningContent)
-                                };
+                        Content = currentStreamedContent,
+                        IsUserMessage = false,
+                        ReasoningContent = currentReasoningContent,
+                        HasReasoning = !string.IsNullOrEmpty(currentReasoningContent),
+                        FormattedContent = formattedHtml,
+                        Timestamp = DateTime.Now
+                    };
 
-                            // Now that streaming is complete, extract tasks and task edits from the full content
-                            var (formattedHtml, tasks, taskEdits) = MessageFormatter.FormatMessageWithTaskExtraction(fullResponseContent);
-                            aiMessage.FormattedContent = formattedHtml;
+                conversationHistory.Add(historyMessage);
 
-                            // Store extracted tasks
-                            extractedTasks.Clear();
-                            extractedTasks.AddRange(tasks);
+                // CRITICAL: Save conversation after AI response
+                await ConversationService.SaveActiveConversationAsync(conversationHistory);
 
-                            // Store and process task edits
-                            extractedTaskEdits.Clear();
-                            extractedTaskEdits.AddRange(taskEdits);
+                // Reset streaming content variables
+                currentStreamedContent = "";
+                currentReasoningContent = "";
 
-                            // Look up original tasks for each edit suggestion
-                            foreach (var editSuggestion in extractedTaskEdits)
-                            {
-                                if (Guid.TryParse(editSuggestion.OriginalId, out Guid taskId))
-                                {
-                                    var originalTask = await TaskService.GetTaskByIdAsync(taskId);
-                                    if (originalTask != null)
-                                    {
-                                        editSuggestion.Original = originalTask;
-                                    }
-                                }
-                            }
-
-                            messages.Add(aiMessage);
-                            reasoningExpandedStates[aiMessage] = false; // Initially collapsed
-
-                            // Add to conversation history with timestamp
-                            var historyMessage = new MessageHistory
-                                {
-                                    Content = fullResponseContent,
-                                    IsUserMessage = false,
-                                    ReasoningContent = currentReasoningContent,
-                                    Timestamp = DateTime.Now
-                                };
-
-                            conversationHistory.Add(historyMessage);
-
-                            // CRITICAL ADDITION: Save conversation after AI response
-                            await ConversationService.SaveActiveConversationAsync(conversationHistory);
-
-                            currentStreamedContent = "";
-                            currentReasoningContent = "";
-                        }
-
-                        // Set streaming to false AFTER processing the content
-                        isStreaming = false;
-                        await InvokeAsync(StateHasChanged);
-                        await InvokeAsync(ScrollToBottomAsync);
-                    }
-                },
-                cts.Token
-            );
+                // Force UI refresh
+                await InvokeAsync(StateHasChanged);
+                await InvokeAsync(ScrollToBottomAsync);
+            }
+        }
+    },
+    cts.Token
+    );
         }
         catch (Exception ex)
         {

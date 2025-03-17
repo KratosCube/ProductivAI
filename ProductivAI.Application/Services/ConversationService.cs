@@ -52,7 +52,9 @@ namespace ProductivAI.Application.Services
                     WriteIndented = false
                 };
 
-                return JsonSerializer.Deserialize<List<MessageHistory>>(json, options);
+                var result = JsonSerializer.Deserialize<List<MessageHistory>>(json, options);
+                Console.WriteLine($"Loaded {result.Count} messages from storage");
+                return result ?? new List<MessageHistory>();
             }
             catch (Exception ex)
             {
@@ -68,11 +70,13 @@ namespace ProductivAI.Application.Services
                 // Add explicit JSON options to ensure property names are preserved
                 var options = new JsonSerializerOptions
                 {
-                    WriteIndented = false
+                    WriteIndented = false,
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
                 };
 
                 var json = JsonSerializer.Serialize(messages, options);
                 await _jsRuntime.InvokeVoidAsync("localStorage.setItem", "productivai_active_conversation", json);
+                Console.WriteLine($"Saved {messages.Count} messages to storage");
             }
             catch (Exception ex)
             {

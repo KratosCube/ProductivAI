@@ -49,6 +49,8 @@ public class MessageFormattingService
         var taskEditPattern = @"\[TASK_EDIT:(\{.*?\})\]";
         var editMatches = Regex.Matches(content, taskEditPattern, RegexOptions.Singleline);
 
+        Console.WriteLine($"Found {editMatches.Count} task edit matches in content");
+
         foreach (Match match in editMatches)
         {
             if (match.Success && match.Groups.Count > 1)
@@ -56,15 +58,22 @@ public class MessageFormattingService
                 try
                 {
                     var jsonStr = match.Groups[1].Value;
-                    var taskEditData = JsonSerializer.Deserialize<TaskEditSuggestion>(
-                        jsonStr,
-                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
-                    );
+                    Console.WriteLine($"Parsing task edit JSON: {jsonStr}");
+
+                    var options = new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true,
+                        WriteIndented = false
+                    };
+
+                    var taskEditData = JsonSerializer.Deserialize<TaskEditSuggestion>(jsonStr, options);
 
                     if (taskEditData != null)
                     {
+                        // Always add the task edit, even with placeholder IDs
                         extractedTaskEdits.Add(taskEditData);
                         content = content.Replace(match.Value, "");
+                        Console.WriteLine($"Successfully extracted task edit suggestion");
                     }
                 }
                 catch (Exception ex)

@@ -1941,12 +1941,12 @@ input:checked + .slider:before {
     margin-bottom: 1rem;
 }
 
-    .comparison-field label {
-        display: block;
-        font-weight: 600;
-        margin-bottom: 0.5rem;
-        color: #999;
-    }
+.comparison-field label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: #999;
+}
 
 .field-value {
     padding: 0.5rem;
@@ -1982,7 +1982,7 @@ input:checked + .slider:before {
     margin: 12px 0;
 }
 
-    .task-edit-suggestion-content h4 {
-        font-weight: 600;
-        margin-bottom: 8px;
-    }
+.task-edit-suggestion-content h4 {
+    font-weight: 600;
+    margin-bottom: 8px;
+}
