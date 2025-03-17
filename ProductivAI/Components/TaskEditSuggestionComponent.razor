@@ -1,0 +1,52 @@
+﻿@using ProductivAI.Core.Models
+@inject IJSRuntime JSRuntime
+
+<div class="task-edit-suggestion-block">
+    <div class="task-action-header">
+        <span class="task-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+        </span>
+        <span>Task Edit Suggestion</span>
+    </div>
+    <div class="task-action-content">
+        <p>I suggest the following changes to task "@OriginalTask.Title":</p>
+        <h4>@EditedTask.Title</h4>
+        @if (!string.IsNullOrEmpty(EditedTask.Description))
+        {
+                    <p class="task-description">@EditedTask.Description</p>
+        }
+        @if (EditedTask.DueDate.HasValue)
+        {
+                    <p>Due: @EditedTask.DueDate.Value.ToShortDateString()</p>
+        }
+        <div class="task-priority">
+            <span class="priority-label">Priority:</span>
+            <span class="priority-value @PriorityClass">@EditedTask.Priority</span>
+        </div>
+    </div>
+    <button class="task-action-button" @onclick="ShowComparisonModal">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+        Review Changes
+    </button>
+</div>
+
+@code {
+    [Parameter] public TaskItem OriginalTask { get; set; }
+    [Parameter] public TaskItem EditedTask { get; set; }
+    [Parameter] public EventCallback<(TaskItem Original, TaskItem Edited)> OnShowModal { get; set; }
+
+    private string PriorityClass => EditedTask.Priority switch
+    {
+        1 => "priority-low",
+        2 => "priority-low",
+        3 => "priority-medium",
+        4 => "priority-high",
+        5 => "priority-high",
+        _ => "priority-medium"
+    };
+
+    private async Task ShowComparisonModal()
+    {
+        await OnShowModal.InvokeAsync((OriginalTask, EditedTask));
+    }
+}

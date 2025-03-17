@@ -980,6 +980,7 @@ Your primary responsibility is to answer the user's CURRENT QUERY, which will be
             sb.AppendLine();
             sb.AppendLine("=============================================");
             sb.AppendLine();
+
             if (!string.IsNullOrEmpty(context.WorkDescription))
             {
                 sb.AppendLine($"\nThe user's work involves: {context.WorkDescription}");
@@ -1049,6 +1050,15 @@ Your primary responsibility is to answer the user's CURRENT QUERY, which will be
             sb.AppendLine("   \"Based on your schedule, here's a strength training plan:\"");
             sb.AppendLine("   [TASK:{\"title\":\"Three-day strength training program at City Gym\",\"description\":\"Follow a structured strength training program on Monday, Wednesday, and Friday at 6am for 45-minute sessions at City Gym focusing on building overall strength\",\"priority\":4,\"dueDate\":\"2025-04-05\",\"subtasks\":[\"Monday 6:00-6:45am: Chest and triceps - bench press, incline press, dips\",\"Wednesday 6:00-6:45am: Back and biceps - rows, pulldowns, curls\",\"Friday 6:00-6:45am: Legs and shoulders - squats, lunges, shoulder press\",\"Pack gym bag night before each session\",\"Record weights and reps in Strong app after each workout\",\"Schedule form check with trainer Jose in week 2\"]}]\"");
 
+            sb.AppendLine("\n## TASK EDITING");
+            sb.AppendLine("You can suggest edits to existing tasks. When the user mentions a task that could benefit from changes, use this format:");
+            sb.AppendLine("[TASK_EDIT:{\"originalId\":\"task-guid-here\",\"edited\":{...edited task JSON...}}]");
+            sb.AppendLine("\nExample task edit suggestion:");
+            sb.AppendLine("[TASK_EDIT:{\"originalId\":\"d2a76c9e-b7f4-4ccf-8c2d-55e9f3a8e4b7\",\"edited\":{\"title\":\"Updated Title\",\"description\":\"Updated description\",\"priority\":4,\"dueDate\":\"2025-04-10\",\"subtasks\":[\"Updated subtask 1\",\"New subtask\"]}}]");
+            sb.AppendLine("\nWhen suggesting task edits:");
+            sb.AppendLine("- Only suggest meaningful improvements that add value");
+            sb.AppendLine("- Highlight the specific changes you're suggesting (e.g., \"I suggest changing the due date to next Friday because...\")");
+            sb.AppendLine("- Maintain all important information from the original task");
             // Role-Based Assistance
             sb.AppendLine("\n## ROLE-BASED ASSISTANCE");
             sb.AppendLine("When responding to queries, adopt the appropriate professional role based on the context:");

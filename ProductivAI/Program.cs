@@ -32,7 +32,7 @@ builder.Services.AddScoped<MessageFormattingService>();
 builder.Services.AddScoped<IAIService>(sp =>
     new DefaultAIService(
         sp.GetRequiredService<HttpClient>(),
-        "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",
+        "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",
         "qwen32b"
     )
 );
@@ -42,7 +42,7 @@ builder.Services.AddScoped<IAIService>(sp =>
 builder.Services.AddScoped<OpenRouterAIService>(sp =>
     new OpenRouterAIService(
         sp.GetRequiredService<HttpClient>(),
-        "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", // This will trigger simulation mode in the service
+        "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", // This will trigger simulation mode in the service
         sp.GetRequiredService<IJSRuntime>(),
         "qwen32b",
         "ProductivAI"

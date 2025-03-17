@@ -68,7 +68,7 @@
                                                 </div>
                                                 <div class="message-bubble">
                                                     <div class="message-content">
-                                        @((MarkupString)FormatMessageContent(message.Content))
+                                        @((MarkupString)message.FormattedContent)
                                                     </div>
 
                                     @if (!message.IsFromUser && message == messages.Last() && !isStreaming && extractedTasks.Any())
@@ -82,6 +82,19 @@
                                                                                 DueDate="@task.DueDate"
                                                                                 Subtasks="@task.Subtasks" 
                                                                                 OnShowModal="@((TaskSuggestion t) => ShowTaskModalWithData(t))" />
+                                        }
+                                    }
+                                    @if (extractedTaskEdits.Any())
+                                    {
+                                        @foreach (var taskEdit in extractedTaskEdits)
+                                        {
+                                            @if (taskEdit.Original != null)
+                                            {
+                                        <TaskEditSuggestionComponent
+                                            OriginalTask="@taskEdit.Original"
+                                            EditedTask="@taskEdit.Edited"
+                                            OnShowModal="@((data) => ShowTaskComparisonModal(data))" />
+                                            }
                                         }
                                     }
                                                 </div>
@@ -123,11 +136,14 @@
                                                     }
                                                                         </button>
                                                                     </div>
-                                            @if (expandedReasoning)
+                                            @foreach (var message in messages)
                                             {
-                                                                                <div class="reasoning-content">
-                                                    @((MarkupString)FormatMessageContent(currentReasoningContent))
-                                                                                </div>
+                                                @if (expandedReasoning)
+                                                {
+                            <div class="reasoning-content">
+                                                        @((MarkupString) FormatMessageContent(message.Content))
+                            </div>
+                                                }
                                             }
                                                                 </div>
                                     }
@@ -670,6 +686,102 @@
                     </div>
                 </div>
     }
+    @if (showTaskComparisonModal)
+    {
+        <div class="task-modal-backdrop"></div>
+        <div class="task-comparison-modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Review Task Changes</h3>
+                    <button class="close-button" @onclick="HideModal">×</button>
+                </div>
+                <div class="modal-body">
+                    <div class="comparison-container">
+                        <div class="original-task">
+                            <h4>Original Task</h4>
+                            <div class="comparison-field">
+                                <label>Title:</label>
+                                <div class="field-value">@originalTask.Title</div>
+                            </div>
+                            <div class="comparison-field">
+                                <label>Description:</label>
+                                <div class="field-value">@originalTask.Description</div>
+                            </div>
+                            <div class="comparison-field">
+                                <label>Priority:</label>
+                                <div class="field-value">@originalTask.Priority</div>
+                            </div>
+                            <div class="comparison-field">
+                                <label>Due Date:</label>
+                                <div class="field-value">@(originalTask.DueDate?.ToShortDateString() ?? "None")</div>
+                            </div>
+                            <div class="comparison-field">
+                                <label>Subtasks:</label>
+                                <div class="field-value">
+                                    @if (originalTask.SubTasks?.Any() == true)
+                                    {
+                                            <ul>
+                                            @foreach (var subtask in originalTask.SubTasks)
+                                            {
+                                                        <li>@subtask.Description</li>
+                                            }
+                                            </ul>
+                                    }
+                                    else
+                                    {
+                                            <p>No subtasks</p>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        <div class="edited-task">
+                            <h4>Suggested Changes</h4>
+                            <div class="comparison-field">
+                                <label>Title:</label>
+                                <div class="field-value @GetDiffClass(originalTask.Title, editedTask.Title)">@editedTask.Title</div>
+                            </div>
+                            <div class="comparison-field">
+                                <label>Description:</label>
+                                <div class="field-value @GetDiffClass(originalTask.Description, editedTask.Description)">@editedTask.Description</div>
+                            </div>
+                            <div class="comparison-field">
+                                <label>Priority:</label>
+                                <div class="field-value @GetDiffClass(originalTask.Priority.ToString(), editedTask.Priority.ToString())">@editedTask.Priority</div>
+                            </div>
+                            <div class="comparison-field">
+                                <label>Due Date:</label>
+                                <div class="field-value @GetDiffClass(originalTask.DueDate?.ToString(), editedTask.DueDate?.ToString())">
+                                    @(editedTask.DueDate?.ToShortDateString() ?? "None")
+                                </div>
+                            </div>
+                            <div class="comparison-field">
+                                <label>Subtasks:</label>
+                                <div class="field-value">
+                                    @if (editedTask.SubTasks?.Any() == true)
+                                    {
+                                            <ul>
+                                            @foreach (var subtask in editedTask.SubTasks)
+                                            {
+                                                        <li class="@GetSubtaskDiffClass(subtask, originalTask.SubTasks)">@subtask.Description</li>
+                                            }
+                                            </ul>
+                                    }
+                                    else
+                                    {
+                                            <p>No subtasks</p>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" @onclick="HideModal">Cancel</button>
+                    <button class="btn-primary" @onclick="ApplyTaskChanges">Apply Changes</button>
+                </div>
+            </div>
+        </div>
+    }
 </div>
 
 <style>
@@ -902,7 +1014,87 @@
 
         await LoadTasksAsync();
     }
+    private List<TaskEditSuggestion> extractedTaskEdits = new();
+    private bool showTaskComparisonModal = false;
+    private TaskItem originalTask = new();
+    private TaskItem editedTask = new();
 
+    // Helper methods for highlighting differences
+    private string GetDiffClass(string original, string edited)
+    {
+        if (string.IsNullOrEmpty(original) && !string.IsNullOrEmpty(edited))
+            return "diff-added";
+        if (!string.IsNullOrEmpty(original) && string.IsNullOrEmpty(edited))
+            return "diff-removed";
+        if (original != edited)
+            return "diff-changed";
+        return "";
+    }
+
+    private string GetSubtaskDiffClass(SubTask subtask, List<SubTask> originalSubtasks)
+    {
+        if (originalSubtasks == null || !originalSubtasks.Any())
+            return "diff-added";
+
+        // Check if this subtask exists in the original task
+        var originalSubtask = originalSubtasks.FirstOrDefault(s => s.Description == subtask.Description);
+        if (originalSubtask == null)
+            return "diff-added";
+
+        // If completion status changed
+        if (originalSubtask.IsCompleted != subtask.IsCompleted)
+            return "diff-changed";
+
+        return "";
+    }
+
+    private async Task ShowTaskComparisonModal((TaskItem Original, TaskItem Edited) taskPair)
+    {
+        originalTask = taskPair.Original;
+        editedTask = taskPair.Edited;
+        showTaskComparisonModal = true;
+        StateHasChanged();
+    }
+
+    private async Task ApplyTaskChanges()
+    {
+        try
+        {
+            // Preserve the ID from the original task
+            editedTask.Id = originalTask.Id;
+
+            // Update the task in the database
+            await TaskService.UpdateTaskAsync(editedTask);
+
+            // Add confirmation message to chat
+            var confirmation = $"✅ Updated task: \"{editedTask.Title}\"";
+
+            messages.Add(new ChatMessage
+                {
+                    Content = confirmation,
+                    IsFromUser = false,
+                    FormattedContent = confirmation
+                });
+
+            conversationHistory.Add(new MessageHistory
+                {
+                    Content = confirmation,
+                    IsUserMessage = false,
+                    Timestamp = DateTime.Now
+                });
+
+            await ConversationService.SaveActiveConversationAsync(conversationHistory);
+
+            // Reload tasks and hide modal
+            await LoadTasksAsync();
+            showTaskComparisonModal = false;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Error updating task: {ex.Message}");
+        }
+    }
     private async Task UpdateAIWithLatestTasksAsync()
     {
         // Get all active tasks
@@ -2016,7 +2208,7 @@
                 Content = userInput, // Original for display
                 IsFromUser = true
             };
-
+        userMessage.FormattedContent = FormatMessageContent(userInput);
         messages.Add(userMessage);
 
         // Add to conversation history with processed input (includes task data for AI)
@@ -2041,8 +2233,9 @@
         currentStreamedContent = "";
         currentReasoningContent = "";
 
-        // Clear any previous task suggestions while streaming
+        // Clear any previous task suggestions and task edits while streaming
         extractedTasks.Clear();
+        extractedTaskEdits.Clear();
 
         StateHasChanged();
 
@@ -2089,6 +2282,7 @@
 
                             // For display during streaming, remove task markers
                             string displayToken = Regex.Replace(token, @"\[TASK:(\{.*?\})\]", "");
+                            displayToken = Regex.Replace(displayToken, @"\[TASK_EDIT:(\{.*?\})\]", "");
                             currentStreamedContent += displayToken;
                         }
 
@@ -2108,10 +2302,30 @@
                                     HasReasoning = !string.IsNullOrEmpty(currentReasoningContent)
                                 };
 
-                            // Now that streaming is complete, extract tasks from the full content
-                            var (_, tasks) = MessageFormatter.FormatMessageWithTaskExtraction(fullResponseContent);
+                            // Now that streaming is complete, extract tasks and task edits from the full content
+                            var (formattedHtml, tasks, taskEdits) = MessageFormatter.FormatMessageWithTaskExtraction(fullResponseContent);
+                            aiMessage.FormattedContent = formattedHtml;
+
+                            // Store extracted tasks
                             extractedTasks.Clear();
                             extractedTasks.AddRange(tasks);
+
+                            // Store and process task edits
+                            extractedTaskEdits.Clear();
+                            extractedTaskEdits.AddRange(taskEdits);
+
+                            // Look up original tasks for each edit suggestion
+                            foreach (var editSuggestion in extractedTaskEdits)
+                            {
+                                if (Guid.TryParse(editSuggestion.OriginalId, out Guid taskId))
+                                {
+                                    var originalTask = await TaskService.GetTaskByIdAsync(taskId);
+                                    if (originalTask != null)
+                                    {
+                                        editSuggestion.Original = originalTask;
+                                    }
+                                }
+                            }
 
                             messages.Add(aiMessage);
                             reasoningExpandedStates[aiMessage] = false; // Initially collapsed
@@ -2150,7 +2364,8 @@
             var errorMessage = new ChatMessage
                 {
                     Content = $"An error occurred: {ex.Message}",
-                    IsFromUser = false
+                    IsFromUser = false,
+                    FormattedContent = $"An error occurred: {ex.Message}"
                 };
 
             messages.Add(errorMessage);
@@ -2403,24 +2618,20 @@
     {
         if (string.IsNullOrEmpty(content))
             return "";
+
         // During streaming, don't extract tasks
-        if (!shouldExtractTasks && isStreaming)
+        if (isStreaming)
         {
             return MessageFormatter.FormatMessageContentWithoutTaskExtraction(content);
         }
-        else
-        {
-            // Extract tasks only when the message is complete
-            var (formattedHtml, tasks) = MessageFormatter.FormatMessageWithTaskExtraction(content);
-            // Only update the extracted tasks when not streaming
-            if (!isStreaming)
-            {
-                extractedTasks.Clear();
-                extractedTasks.AddRange(tasks);
-            }
-            return formattedHtml;
-        }
+
+        // For completed messages, extract tasks and task edits
+        var (formattedHtml, tasks, taskEdits) = MessageFormatter.FormatMessageWithTaskExtraction(content);
+
+        return formattedHtml;
     }
+
+
 
     private string ProcessTaskMarkersAfterMarkdown(string html)
     {
@@ -2983,5 +3194,7 @@
         public bool IsFromUser { get; set; }
         public string ReasoningContent { get; set; }
         public bool HasReasoning { get; set; }
+        public string FormattedContent { get; set; }
     }
+
 }
