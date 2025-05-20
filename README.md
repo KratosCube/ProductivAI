@@ -164,12 +164,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - [OpenRouter](https://openrouter.ai/) for AI model access
 - [Blazor](https://dotnet.microsoft.com/apps/aspnet/web-apps/blazor) for the web framework
-- All contributors and users of ProductivAI
-
-## 📞 Contact
-
-For questions and support, please [open an issue](https://github.com/yourusername/ProductivAI/issues) or contact us at [your-email@example.com](mailto:your-email@example.com).
-
----
-
-Made with ❤️ by [Your Name/Team] 
