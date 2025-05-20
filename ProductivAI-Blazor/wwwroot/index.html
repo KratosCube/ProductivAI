@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ProductivAI-Blazor</title>
+    <base href="/" />
+    <!-- <link rel="stylesheet" href="css/bootstrap/bootstrap.min.css" /> -->
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="icon" type="image/png" href="images/ProductivAI.png" />
+    <link href="ProductivAI-Blazor.styles.css" rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+            },
+            colors: {
+              'dark-bg': '#1a1a1a',
+              'dark-panel': '#2a2a2a',
+              'dark-input': '#3a3a3a',
+              'dark-border': '#4a4a4a',
+              'dark-text-primary': '#e0e0e0',
+              'dark-text-secondary': '#a0a0a0',
+              'dark-accent': '#5a5a5a',
+              'modal-bg': '#2f2f2f',
+            }
+          }
+        }
+      }
+    </script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head> 
+
+<body>
+    <div id="app">
+        <svg class="loading-progress">
+            <circle r="40%" cx="50%" cy="50%" />
+            <circle r="40%" cx="50%" cy="50%" />
+        </svg>
+        <div class="loading-progress-text"></div>
+    </div>
+
+    <div id="blazor-error-ui">
+        An unhandled error has occurred.
+        <a href="" class="reload">Reload</a>
+        <a class="dismiss">🗙</a>
+    </div>
+    <script src="_framework/blazor.webassembly.js"></script>
+    <script src="js/appInterop.js"></script>
+</body>
+
+</html>

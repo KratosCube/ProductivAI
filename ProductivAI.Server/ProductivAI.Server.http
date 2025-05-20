@@ -1,0 +1,6 @@
+@ProductivAI.Server_HostAddress = http://localhost:5186
+
+GET {{ProductivAI.Server_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

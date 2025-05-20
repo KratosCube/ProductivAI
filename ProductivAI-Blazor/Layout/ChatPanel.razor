@@ -1,0 +1,1118 @@
+@using Markdig
+@using ProductivAI_Blazor.Components.Chat
+@using ProductivAI_Blazor.Models
+@using System.Text.RegularExpressions
+@using Microsoft.Extensions.Logging
+@using System.Text.Json
+@using ProductivAI_Blazor.Services
+@using Microsoft.JSInterop
+@inject IJSRuntime JSRuntime
+@inject OpenRouterService OpenRouterService
+@inject TaskModalService TaskModalService
+@inject ILogger<ChatPanel> Logger
+@inject TaskService TaskService
+@inject ProjectService ProjectService
+@inject NavigationManager NavigationManager
+@inject NavigationStateService NavStateService
+@implements IAsyncDisposable
+@inject IConfiguration Configuration
+
+<div class="h-full flex flex-col bg-dark-panel relative">
+    <!-- Header: Always visible -->
+    <div class="p-3 border-b border-dark-border flex justify-between items-center h-14 flex-shrink-0">
+        <div class="flex items-center space-x-2">
+           <span class="w-3 h-3 @(isStreaming ? "bg-yellow-500 animate-pulse" : "bg-green-500") rounded-full inline-block"></span>
+           <span class="text-sm font-medium">Assistant @(isStreaming ? (string.IsNullOrEmpty(currentReasoning) ? "(typing...)" : $"(Thinking: {currentReasoning.Split('\n')[0]}...)") : "")</span>
+        </div>
+        <button id="chat-toggle-button-blazor" title="@(IsMaximized ? "Collapse Chat" : "Expand Chat")" class="text-dark-text-secondary hover:text-dark-text-primary p-1 rounded-md hover:bg-dark-accent" @onclick="TogglePanel">
+            <i data-lucide="@(IsMaximized ? "chevron-left" : "chevron-right")" style="width: 20px; height: 20px;"></i>
+        </button>
+    </div>
+
+    <!-- Chat History -->
+    <div class="flex-1 overflow-y-auto p-4 space-y-4 relative" id="chat-history-blazor" @ref="chatHistoryElement">
+        @if (!messages.Any())
+        {
+            <p class="text-sm text-dark-text-secondary">Chat history will appear here. Send a message to start.</p>
+        }
+        @foreach (var message in messages)
+        {
+            <div class="flex @(message.Sender == ProductivAI_Blazor.Models.ChatMessageSender.User ? "justify-end" : "justify-start") mb-3">
+                <div class="max-w-[80%] p-3 rounded-lg @(message.Sender == ProductivAI_Blazor.Models.ChatMessageSender.User ? "bg-blue-600 text-white" : "bg-dark-input text-dark-text-primary")">
+                    <div class="text-sm prose prose-sm max-w-none dark:prose-invert">
+                        @if (message.IsStreaming && message.Sender == ProductivAI_Blazor.Models.ChatMessageSender.Assistant && string.IsNullOrEmpty(message.Content))
+                        {
+                            <div class="streaming-indicator">
+                                <span>Thinking</span><span class="dot1">.</span><span class="dot2">.</span><span class="dot3">.</span>
+                            </div>
+                        }
+                        else
+                        {
+                            @ConvertMarkdownToHtml(message.Content)
+                        }
+                    </div>
+                    @if (message.Sender == ProductivAI_Blazor.Models.ChatMessageSender.Assistant && !string.IsNullOrEmpty(message.ModelUsed))
+                    {
+                        <p class="text-xs opacity-60 mt-1">Model: @message.ModelUsed</p>
+                    }
+                    @if (message.Sender == ProductivAI_Blazor.Models.ChatMessageSender.Assistant && !message.IsStreaming && !string.IsNullOrEmpty(message.Content)) // Only show for completed AI messages
+                    {
+                        @if (_isLoadingOptions && _optionsForMessageId == message.Id.ToString())
+                        {
+                            <div class="quick-reply-loading text-xs text-dark-text-secondary mt-2">
+                                <span>Loading options</span><span class="dot1">.</span><span class="dot2">.</span><span class="dot3">.</span>
+                            </div>
+                        }
+                        else if (_currentQuickReplyOptions.Any() && _optionsForMessageId == message.Id.ToString())
+                        {
+                            <QuickReplyButtons Options="_currentQuickReplyOptions" SelectedOptions="_selectedQuickReplyOptions" OnOptionSelected="HandleQuickReplySelected" />
+                        }
+
+                        @if (_isLoadingTaskSuggestion && messages.LastOrDefault() == message && _generatingSuggestionForMessageId == message.Id.ToString()) // Updated condition
+                        {
+                            <div class="task-suggestion-loading text-xs text-dark-text-secondary mt-2 pt-2 border-t border-dark-accent">
+                                <span>Generating task suggestion...</span><span class="dot1">.</span><span class="dot2">.</span><span class="dot3">.</span>
+                            </div>
+                        }
+                        else if (message.AttachedTaskSuggestion != null) // Use AttachedTaskSuggestion
+                        {
+                            <TaskSuggestionCard Suggestion="message.AttachedTaskSuggestion" OnAddTask="HandleAddTaskFromSuggestion" />
+                        }
+
+                        @* Render Project Suggestion Card *@
+                        @if (message.AttachedProjectSuggestion != null && !message.AttachedProjectSuggestion.IsActioned)
+                        {
+                            <ProjectSuggestionCard Suggestion="message.AttachedProjectSuggestion" 
+                                                   OnCreateProject="(suggestion) => HandleCreateProjectFromSuggestion(suggestion, message)" 
+                                                   OnDismiss="(_) => HandleDismissProjectSuggestion(message)" />
+                        }
+
+                        @* Render Task Ideas List Review Card *@
+                        @if (message.AttachedTaskIdeasListSuggestion != null && !message.AttachedTaskIdeasListSuggestion.IsActioned)
+                        {
+                            <TaskIdeasListReviewCard Suggestion="message.AttachedTaskIdeasListSuggestion"
+                                                     OnSave="(suggestion) => HandleSaveTaskIdeasList(suggestion, message)"
+                                                     OnCancel="(_) => HandleCancelTaskIdeasListReview(message)" />
+                        }
+
+                        @* START - Date Picker UI *@
+                        @if (_showDatePicker && _messageIdForDatePicker == message.Id.ToString())
+                        {
+                            <div class="mt-3 mb-2 p-0.5 rounded-lg bg-gradient-to-r from-green-400 via-blue-500 to-purple-600 shadow-md">
+                                <div class="bg-dark-panel rounded-[calc(0.5rem-2px)] p-3">
+                                    <p class="text-xs text-blue-300 mb-2 font-semibold">Select a Due Date:</p>
+                                    <div class="flex items-center space-x-2">
+                                        <input type="date" @bind="_selectedDueDate"
+                                               class="bg-dark-input border border-dark-border text-dark-text-primary text-sm rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 w-full"
+                                               style="color-scheme: dark;" />
+                                        <button @onclick="HandleSetDueDateAsync"
+                                                class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 whitespace-nowrap">
+                                            Set Date
+                                        </button>
+                                        <button @onclick="CancelDatePicker"
+                                                class="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white text-sm rounded-md focus:outline-none focus:ring-2 focus:ring-gray-500">
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                        @* END - Date Picker UI *@
+                    }
+                </div>
+            </div>
+        }
+        @if (streamingError != null)
+        {
+             <div class="flex justify-start mb-3">
+                <div class="max-w-[80%] p-3 rounded-lg bg-red-700 text-white">
+                    <p class="text-sm font-semibold">Error:</p>
+                    <p class="text-sm whitespace-pre-wrap">@streamingError</p>
+                </div>
+            </div>
+        }
+
+        <!-- Floating Generate Task Suggestion Button - MOVED BACK INSIDE CHAT HISTORY -->
+        @if (_showGenerateSuggestionButton)
+        {
+            <div class="absolute bottom-4 right-4 z-20 group">
+                <div class="p-0.5 rounded-full bg-gradient-to-r from-green-400 via-blue-500 to-purple-600 
+                            hover:from-green-500 hover:via-blue-600 hover:to-purple-700 
+                            transition-all duration-200 ease-in-out shadow-lg">
+                    <button class="w-10 h-10 rounded-full bg-dark-accent hover:bg-dark-input text-white flex items-center justify-center transition-all duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-panel focus:ring-blue-500"
+                            @onclick="HandleGenerateTaskSuggestionClickedAsync"
+                            disabled="@_isLoadingTaskSuggestion"
+                            title="Create Task Suggestion">
+                        @if (_isLoadingTaskSuggestion)
+                        {
+                            <div class="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-white"></div>
+                        }
+                        else
+                        {
+                            <img src="/images/ProductivAI.png" alt="Generate Task Suggestion" class="w-10 h-10" />
+                        }
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- Input Area -->
+    <div class="p-3 border-t border-dark-border flex-shrink-0">
+        @if (_currentlyDiscussedIdea != null)
+        {
+            <div class="mb-2 p-2 bg-blue-900 rounded-md flex justify-between items-center">
+                <span class="text-sm text-blue-200">
+                    Discussing idea: "@_currentlyDiscussedIdea.Name"
+                </span>
+                <button class="px-3 py-1 bg-blue-600 text-white text-xs font-medium rounded-md hover:bg-blue-700 flex items-center justify-center min-w-[100px]" 
+                        @onclick="HandleDevelopDiscussedIdeaWithAi" disabled="@_isDevelopingIdeaWithAi">
+                    @if (_isDevelopingIdeaWithAi) 
+                    {
+                        <div class="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                        <span>Developing...</span>
+                    }
+                    else
+                    {
+                        @* <i data-lucide="arrow-up-right-from-square" class="inline-block w-3 h-3 mr-1"></i> Temporarily remove icon *@ 
+                        <span>Develop Idea</span>
+                    }
+                </button>
+            </div>
+        }
+        <div class="flex items-center bg-dark-input rounded-lg p-2">
+            <textarea @bind="userInput" @bind:event="oninput" @onkeydown="HandleTextareaKeyDown"
+                      id="chat-input-textarea-blazor" 
+                      placeholder="Message Assistant..." 
+                      class="flex-1 bg-transparent border-none focus:ring-0 resize-none text-sm text-dark-text-primary placeholder-dark-text-secondary px-2 outline-none"
+                      rows="1" style="max-height: 100px;" disabled="@isStreaming"></textarea>
+            <button id="send-chat-button-blazor" class="ml-2 p-1 rounded-md hover:bg-dark-accent @(isStreaming ? "text-yellow-500" : "text-dark-text-secondary hover:text-dark-text-primary")" 
+                    @onclick="HandleSendAsync" disabled="@(isStreaming || string.IsNullOrWhiteSpace(userInput))">
+                <i data-lucide="@(isStreaming ? "square" : "send-horizontal")" style="width: 20px; height: 20px;"></i>
+            </button>
+        </div>
+        <div class="mt-2 px-1 pb-1 flex items-center justify-between text-xs border-t border-dark-border pt-2">
+            <select @bind="selectedModelId" class="bg-dark-input border border-dark-border text-dark-text-primary text-xs rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500" disabled="@isStreaming">
+                @if (OpenRouterService.AvailableModels.Any()) {
+                    foreach (var model in OpenRouterService.AvailableModels)
+                    {
+                        <option value="@model.Id">@model.Name</option>
+                    }
+                } else {
+                    <option value="">No models available</option>
+                }
+            </select>
+            <button id="clear-chat-button-blazor" title="Clear Chat History" class="text-dark-text-secondary hover:text-red-500 p-1 rounded-md hover:bg-dark-accent" @onclick="ClearChatHistory" disabled="@isStreaming">
+                <i data-lucide="trash-2" style="width: 18px; height: 18px;"></i>
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public bool IsMaximized { get; set; }
+
+    [Parameter]
+    public EventCallback OnToggle { get; set; }
+
+    private List<ProductivAI_Blazor.Models.ChatMessage> messages = new List<ProductivAI_Blazor.Models.ChatMessage>();
+    private string userInput = string.Empty;
+    private string? selectedModelId = null;
+    private bool isStreaming = false;
+    private string? streamingError = null;
+    private string? currentReasoning = null;
+    private ElementReference chatHistoryElement;
+    private TaskItemModel? _currentlyDiscussedIdea; // To store the idea being discussed
+    private bool _isDevelopingIdeaWithAi = false; // For loading state
+    
+    private DotNetObjectReference<ChatPanel>? dotNetHelper;
+    private string? _apiKey; // Consider moving to config
+    private const string SiteUrl = "http://localhost"; 
+    private const string SiteName = "ProductivAI-Blazor";
+
+    private UserContextModel _userContext = new UserContextModel();
+    private bool _isLoadingOptions = false;
+    private List<string> _currentQuickReplyOptions = new List<string>();
+    private HashSet<string> _selectedQuickReplyOptions = new HashSet<string>(); // Added for tracking selected options
+    private string _optionsForMessageId = string.Empty; // Storing as string, converted from Guid
+
+    // Task Suggestion Fields - REVISED
+    // private AiTaskSuggestion? _currentTaskSuggestion; // REMOVED
+    private bool _isLoadingTaskSuggestion = false;
+    // private string? _taskSuggestionForMessageId; // REMOVED
+    private string? _generatingSuggestionForMessageId; // To show loading indicator on the correct message while generating
+
+    private bool _showGenerateSuggestionButton = false;
+    private string? _messageIdForPotentialSuggestion;
+
+    // Date Picker Fields
+    private bool _showDatePicker = false;
+    private DateTime? _selectedDueDate;
+    private string? _messageIdForDatePicker;
+
+    private static MarkdownPipeline _markdownPipeline = new MarkdownPipelineBuilder().UseAdvancedExtensions().UseSoftlineBreakAsHardlineBreak().Build();
+    private static readonly Regex OptionsMarkerRegex = new Regex(@"@@OPTIONS_START@@.*?@@OPTIONS_END@@", RegexOptions.Compiled | RegexOptions.Singleline);
+    private static readonly Regex ProjectSuggestRegex = new Regex(@"^\[AI_SUGGEST_PROJECT name=\""(.*?)\"" description=\""(.*?)\""\]$", RegexOptions.Compiled | RegexOptions.Multiline);
+    private static readonly Regex TaskIdeasListSuggestRegex = new Regex(@"^\[AI_SUGGEST_TASK_IDEAS project_id=""(\d+)"" ideas=(\[.*?\])\]$", RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.IgnoreCase);
+
+    private MarkupString ConvertMarkdownToHtml(string markdownContent)
+    {
+        if (string.IsNullOrEmpty(markdownContent))
+        {
+            return new MarkupString(string.Empty);
+        }
+        return new MarkupString(Markdig.Markdown.ToHtml(markdownContent));
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        dotNetHelper = DotNetObjectReference.Create(this);
+        TaskModalService.OnTaskSuccessfullySavedFromSuggestion += HandleTaskSavedFromSuggestionAsync;
+        TaskModalService.OnOpenTaskModalRequested += OpenModalForSuggestedTaskAsync;
+        NavStateService.OnIdeaToDiscussChanged += HandleIdeaToDiscussChangedByEvent; // Subscribe
+        _apiKey = Configuration["OpenRouterApiKey"];
+        if (string.IsNullOrEmpty(_apiKey))
+        {
+            Logger.LogError("[ERROR] OpenRouter API Key is not configured in appsettings.Blazor.json! Chat functionality may be impaired.");
+            // Optionally, display a message to the user or disable chat input
+        }
+        else
+        {
+            Logger.LogInformation("[INFO] OpenRouter API Key loaded from configuration.");
+        }
+        await LoadApiKeyAsync(); 
+        await LoadSelectedModelAsync(); 
+        await LoadUserContextAsync(); 
+
+        var loadedMessages = await OpenRouterService.GetChatHistoryAsync();
+        messages = loadedMessages ?? new List<ProductivAI_Blazor.Models.ChatMessage>();
+        currentReasoning = null; 
+        
+        if (string.IsNullOrEmpty(selectedModelId) && OpenRouterService.AvailableModels.Any())
+        {
+             selectedModelId = OpenRouterService.AvailableModels.First().Id;
+        }
+        else if (OpenRouterService.AvailableModels.Any() && !OpenRouterService.AvailableModels.Any(m => m.Id == selectedModelId) )
+        { 
+            selectedModelId = OpenRouterService.AvailableModels.First().Id;
+        }
+        HandleIdeaToDiscussChangedByEvent(); // Initial check
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (messages.Any()) 
+        {
+            await ScrollToBottomAsync();
+        }
+    }
+
+    private async Task TogglePanel()
+    {
+        await OnToggle.InvokeAsync();
+    }
+
+    private async Task HandleTextareaKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await HandleSendAsync();
+        }
+        await JSRuntime.InvokeVoidAsync("eval", "let el = document.getElementById('chat-input-textarea-blazor'); if(el) { el.style.height='auto'; el.style.height=el.scrollHeight+'px'; }");
+    }
+
+    private async Task HandleSendAsync()
+    {
+        if (string.IsNullOrWhiteSpace(this.userInput) || isStreaming) return; // Use this.userInput for class field
+        if (string.IsNullOrEmpty(selectedModelId)) 
+        {
+            streamingError = "No AI model selected. Please select a model from the dropdown.";
+            isStreaming = false;
+            StateHasChanged();
+            return;
+        }
+
+        _currentQuickReplyOptions.Clear(); // Clear previous options before sending new message
+        _selectedQuickReplyOptions.Clear(); // Clear selected options as well
+        _optionsForMessageId = string.Empty;
+        // _currentTaskSuggestion = null; // REMOVED - Suggestions are per-message now
+
+        var userMessageContent = this.userInput.Trim(); // Store content from class field
+        var userMessage = new ProductivAI_Blazor.Models.ChatMessage(ProductivAI_Blazor.Models.ChatMessageSender.User, userMessageContent);
+        messages.Add(userMessage);
+        this.userInput = string.Empty; // Clear class field AFTER using its value
+        
+        await OpenRouterService.SetChatHistoryAsync(messages.ToList()); 
+
+        isStreaming = true;
+        streamingError = null;
+        currentReasoning = null; 
+        
+        // Add placeholder for assistant message. JS will populate its content.
+        ProductivAI_Blazor.Models.ChatMessage assistantMessagePlaceholder = new ProductivAI_Blazor.Models.ChatMessage(ProductivAI_Blazor.Models.ChatMessageSender.Assistant, string.Empty, selectedModelId);
+        assistantMessagePlaceholder.IsStreaming = true; // Set streaming true for placeholder
+        messages.Add(assistantMessagePlaceholder);
+        StateHasChanged();
+        await ScrollToBottomAsync();
+        await JSRuntime.InvokeVoidAsync("eval", "let el = document.getElementById('chat-input-textarea-blazor'); if(el) { el.style.height='auto'; }");
+
+        string userContextJson = await OpenRouterService.GetUserContextJsonAsync();
+        
+        // --- MODIFICATION START: Fetch and serialize active tasks ---
+        string activeTasksJson = "[]"; // Default to empty array
+        try
+        {
+            var activeTasks = await TaskService.GetTasksAsync(includeCompleted: false);
+            if (activeTasks != null && activeTasks.Any())
+            {
+                activeTasksJson = System.Text.Json.JsonSerializer.Serialize(activeTasks, new System.Text.Json.JsonSerializerOptions { WriteIndented = false });
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error fetching or serializing active tasks for AI context.");
+            // activeTasksJson remains "[]"
+        }
+        // --- MODIFICATION END ---
+
+        // --- MODIFICATION START: Fetch and serialize user projects from ProjectService --- 
+        string projectsJson = "[]";
+        try 
+        {
+            var dbProjects = await ProjectService.GetProjectsAsync();
+            if (dbProjects != null && dbProjects.Any())
+            {
+                // The AI might not need the full ProjectModel (e.g., color), 
+                // so optionally map to a simpler object if desired for the prompt.
+                // For now, sending the essentials: Id and Name.
+                var projectsForAi = dbProjects.Select(p => new { p.Id, p.Name, p.Description }).ToList();
+                projectsJson = System.Text.Json.JsonSerializer.Serialize(projectsForAi, new System.Text.Json.JsonSerializerOptions { WriteIndented = false });
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error fetching or serializing user projects for AI context in ChatPanel.");
+        }
+        // --- MODIFICATION END ---
+
+        string currentDate = DateTime.UtcNow.ToString("yyyy-MM-dd");
+        string systemPrompt = OpenRouterService.GetFocusedMainSystemPrompt(userContextJson, activeTasksJson, currentDate, projectsJson);
+
+        var conversationHistoryForApi = messages
+            .Where(m => m.Sender == ProductivAI_Blazor.Models.ChatMessageSender.User || 
+                        (m.Sender == ProductivAI_Blazor.Models.ChatMessageSender.Assistant && m != assistantMessagePlaceholder && !string.IsNullOrEmpty(m.Content)))
+            .Select(m => new ProductivAI_Blazor.Models.ApiChatMessage(m.Role, m.Content))
+            .ToList();
+        
+        // Prepend system prompt
+        var messagesForApiCall = new List<ProductivAI_Blazor.Models.ApiChatMessage> { new ProductivAI_Blazor.Models.ApiChatMessage("system", systemPrompt) };
+        messagesForApiCall.AddRange(conversationHistoryForApi);
+
+        try
+        {
+            if (OpenRouterService.ShouldUseJsInteropStreaming(selectedModelId)) 
+            {
+            await JSRuntime.InvokeVoidAsync("appInterop.streamOpenRouterChat", 
+                _apiKey, 
+                selectedModelId, 
+                    System.Text.Json.JsonSerializer.Serialize(messagesForApiCall), 
+                SiteUrl,
+                SiteName,
+                dotNetHelper);
+            }
+            else // C# Streaming Path
+            {
+                var assistantMessage = messages.LastOrDefault(m => m.Id == assistantMessagePlaceholder.Id);
+                if (assistantMessage != null) 
+                {
+                    assistantMessage.IsStreaming = true;
+                    StateHasChanged();
+                    string accumulatedContent = string.Empty;
+                    await foreach (var chunk in OpenRouterService.StreamChatCompletionAsync(messagesForApiCall, _apiKey, selectedModelId))
+                    {
+                        accumulatedContent += chunk;
+                        assistantMessage.Content = accumulatedContent; // Update for live display
+                        if (string.IsNullOrEmpty(assistantMessage.ModelUsed)) assistantMessage.ModelUsed = selectedModelId;
+                        StateHasChanged();
+                        await ScrollToBottomAsync();
+                    }
+                    assistantMessage.Content = StripOptionMarkers(accumulatedContent); // Strip markers from final content
+                    assistantMessage.IsStreaming = false;
+                    await FinalizeAiMessageProcessing(assistantMessage, assistantMessage.Content); 
+                    isStreaming = false; 
+                    StateHasChanged();
+                    await OpenRouterService.SetChatHistoryAsync(messages.ToList());
+                    await OpenRouterService.SetLastUsedChatModelIdAsync(selectedModelId);
+                }
+            }
+        }
+        catch (Microsoft.JSInterop.JSException jsEx)
+        {
+            streamingError = $"JavaScript invocation error: {jsEx.Message}";
+            var assistantMessage = messages.LastOrDefault(m => m.Sender == ProductivAI_Blazor.Models.ChatMessageSender.Assistant && m.IsStreaming);
+            if(assistantMessage != null) { assistantMessage.IsStreaming = false; assistantMessage.IsError = true; }
+            isStreaming = false;
+            currentReasoning = null;
+            StateHasChanged();
+            await OpenRouterService.SetChatHistoryAsync(messages.ToList());
+        }
+        catch (Exception ex)
+        {
+            streamingError = $"Error preparing for streaming: {ex.Message}";
+            var assistantMessage = messages.LastOrDefault(m => m.Sender == ProductivAI_Blazor.Models.ChatMessageSender.Assistant && m.IsStreaming);
+            if(assistantMessage != null) { assistantMessage.IsStreaming = false; assistantMessage.IsError = true; }
+            isStreaming = false;
+            currentReasoning = null;
+            StateHasChanged();
+            await OpenRouterService.SetChatHistoryAsync(messages.ToList());
+        }
+    }
+
+    [JSInvokable("ReceiveChunk")]
+    public void ReceiveChunkJavaScript(string chunk)
+    {
+        var assistantMessage = messages.LastOrDefault(m => m.Sender == ProductivAI_Blazor.Models.ChatMessageSender.Assistant && m.IsStreaming);
+        if (isStreaming && assistantMessage != null)
+        {
+            assistantMessage.Content += chunk;
+            if (string.IsNullOrEmpty(assistantMessage.ModelUsed)) {
+                assistantMessage.ModelUsed = selectedModelId;
+            }
+            InvokeAsync(async () => { 
+                StateHasChanged(); 
+                await ScrollToBottomAsync(); 
+            });
+        }
+    }
+
+    [JSInvokable("ReceiveReasoningUpdate")]
+    public void ReceiveReasoningUpdateJavaScript(string reasoning)
+    {
+        currentReasoning = reasoning;
+        InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable("StreamEnd")]
+    public async Task StreamEndJavaScript()
+    {
+        var assistantMessage = messages.LastOrDefault(m => m.Sender == ProductivAI_Blazor.Models.ChatMessageSender.Assistant && m.IsStreaming);
+        if (assistantMessage != null)
+        {
+            assistantMessage.Content = StripOptionMarkers(assistantMessage.Content); // Strip markers
+            assistantMessage.IsStreaming = false;
+            await FinalizeAiMessageProcessing(assistantMessage, assistantMessage.Content); 
+        }
+        currentReasoning = null;
+        isStreaming = false;
+        await InvokeAsync(async () =>
+        {
+            StateHasChanged();
+            await OpenRouterService.SetChatHistoryAsync(messages.ToList());
+            await OpenRouterService.SetLastUsedChatModelIdAsync(selectedModelId);
+        });
+    }
+
+    [JSInvokable("StreamError")]
+    public async Task StreamErrorJavaScript(string error)
+    {
+        var assistantMessage = messages.LastOrDefault(m => m.Sender == ProductivAI_Blazor.Models.ChatMessageSender.Assistant && m.IsStreaming);
+        if (assistantMessage != null)
+        {
+            assistantMessage.IsError = true;
+            assistantMessage.IsStreaming = false;
+            if (string.IsNullOrEmpty(assistantMessage.Content)) assistantMessage.Content = "An error occurred."; // Ensure some content if empty
+        }
+        streamingError = error;
+        currentReasoning = null;
+        isStreaming = false;
+        await InvokeAsync(async () => 
+        {
+            StateHasChanged();
+            await OpenRouterService.SetChatHistoryAsync(messages.ToList());
+        });
+    }
+
+    private async Task FinalizeAiMessageProcessing(ProductivAI_Blazor.Models.ChatMessage assistantMessage, string aiResponseContent)
+    {
+        assistantMessage.IsStreaming = false;
+        currentReasoning = null;
+
+        const string canSuggestMarker = "@@CAN_SUGGEST_TASK@@";
+        const string requestDueDateMarker = "@@REQUEST_DUE_DATE@@";
+        bool processedSpecialTag = false;
+
+        // Check for Project Suggestion Tag FIRST
+        var projectMatch = ProjectSuggestRegex.Match(aiResponseContent);
+        if (projectMatch.Success)
+        {
+            string projectName = projectMatch.Groups[1].Value;
+            string projectDescription = projectMatch.Groups[2].Value;
+            assistantMessage.AttachedProjectSuggestion = new ProjectSuggestionModel 
+            { 
+                Name = projectName, 
+                Description = projectDescription 
+            };
+            aiResponseContent = ProjectSuggestRegex.Replace(aiResponseContent, string.Empty).Trim();
+            processedSpecialTag = true;
+        }
+
+        // Check for Task Ideas List Suggestion Tag if no project suggestion was processed
+        if (!processedSpecialTag)
+        {
+            var taskIdeasListMatch = TaskIdeasListSuggestRegex.Match(aiResponseContent);
+            if (taskIdeasListMatch.Success)
+            {
+                if (int.TryParse(taskIdeasListMatch.Groups[1].Value, out int projectId))
+                {
+                    string ideasJsonArrayString = taskIdeasListMatch.Groups[2].Value;
+                    List<string> ideaNames = new List<string>();
+                    try
+                    {
+                        ideaNames = System.Text.Json.JsonSerializer.Deserialize<List<string>>(ideasJsonArrayString) ?? new List<string>();
+                        assistantMessage.AttachedTaskIdeasListSuggestion = new SuggestedTaskIdeasListModel
+                        {
+                            ProjectId = projectId,
+                            IdeaNames = ideaNames
+                        };
+                        aiResponseContent = TaskIdeasListSuggestRegex.Replace(aiResponseContent, string.Empty).Trim();
+                        processedSpecialTag = true;
+                        Logger.LogInformation($"Parsed AI_SUGGEST_TASK_IDEAS for project {projectId} with {ideaNames.Count} ideas.");
+                    }
+                    catch (System.Text.Json.JsonException jsonEx)
+                    {
+                        Logger.LogError(jsonEx, $"Failed to deserialize ideas JSON array: {ideasJsonArrayString}");
+                        // Content remains as is, tag effectively ignored due to parsing error
+                    }
+                }
+                else
+                {
+                     Logger.LogWarning($"Failed to parse project_id from AI_SUGGEST_TASK_IDEAS tag: {taskIdeasListMatch.Groups[1].Value}");
+                }
+            }
+        }
+
+        // Only process these if no primary suggestion tag was handled
+        if (!processedSpecialTag)
+        {
+            if (aiResponseContent.Contains(canSuggestMarker))
+            {
+                aiResponseContent = aiResponseContent.Replace(canSuggestMarker, "").Trim();
+                _showGenerateSuggestionButton = true;
+                _messageIdForPotentialSuggestion = assistantMessage.Id.ToString();
+            }
+
+            if (aiResponseContent.Contains(requestDueDateMarker))
+            {
+                aiResponseContent = aiResponseContent.Replace(requestDueDateMarker, "").Trim();
+                _showDatePicker = true;
+                _selectedDueDate = DateTime.Today; 
+                _messageIdForDatePicker = assistantMessage.Id.ToString();
+            }
+        }
+        else // If a special tag was processed, ensure other UI triggers are reset
+        {
+            _showGenerateSuggestionButton = false;
+            _showDatePicker = false;
+        }
+
+        assistantMessage.Content = aiResponseContent; // Final content update
+
+        if (!_showDatePicker && assistantMessage.AttachedProjectSuggestion == null && assistantMessage.AttachedTaskIdeasListSuggestion == null) 
+        {
+            await LoadAndDisplayQuickReplyOptions(assistantMessage, aiResponseContent);
+        }
+        else
+        {
+            _currentQuickReplyOptions.Clear(); 
+        }
+        
+        await OpenRouterService.SetChatHistoryAsync(messages.ToList());
+        StateHasChanged();
+        await ScrollToBottomAsync();
+    }
+
+    private async Task HandleQuickReplySelected(string selectedOptionText)
+    {
+        if (_selectedQuickReplyOptions.Contains(selectedOptionText))
+        {
+            _selectedQuickReplyOptions.Remove(selectedOptionText);
+        }
+        else
+        {
+            _selectedQuickReplyOptions.Add(selectedOptionText);
+        }
+
+        userInput = string.Join(", ", _selectedQuickReplyOptions);
+        await JSRuntime.InvokeVoidAsync("eval", "let el = document.getElementById('chat-input-textarea-blazor'); if(el) { el.style.height='auto'; el.style.height=el.scrollHeight+'px'; el.focus(); }"); // Adjust height and focus
+        StateHasChanged();
+    }
+
+    private async Task ClearChatHistory()
+    {
+        messages.Clear();
+        streamingError = null;
+        currentReasoning = null;
+        _currentQuickReplyOptions.Clear();
+        _selectedQuickReplyOptions.Clear();
+        _optionsForMessageId = string.Empty;
+        await OpenRouterService.ClearChatHistoryStorageAsync(); 
+        StateHasChanged();
+    }
+
+    private async Task ScrollToBottomAsync()
+    {
+        try
+        {
+            if (chatHistoryElement.Id != null) { 
+                 await JSRuntime.InvokeVoidAsync("appInterop.scrollToBottom", chatHistoryElement);
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error scrolling to bottom: {ex.Message}");
+        }
+    }
+    
+    public async ValueTask DisposeAsync()
+    {
+        dotNetHelper?.Dispose();
+        TaskModalService.OnTaskSuccessfullySavedFromSuggestion -= HandleTaskSavedFromSuggestionAsync;
+        TaskModalService.OnOpenTaskModalRequested -= OpenModalForSuggestedTaskAsync;
+        NavStateService.OnIdeaToDiscussChanged -= HandleIdeaToDiscussChangedByEvent; // Unsubscribe
+        await ValueTask.CompletedTask;
+    }
+
+    // --- Methods to be properly implemented or filled --- 
+    private async Task LoadApiKeyAsync() // Changed name to Async
+    {
+        // TODO: Implement actual API key loading logic, perhaps from a secure config or service
+        // For now, _apiKey field is hardcoded as per original snippet.
+        await Task.CompletedTask; // Placeholder if key is already in _apiKey field
+    }
+
+    private async Task LoadSelectedModelAsync() // Changed name to Async
+    {
+        string? lastUsedChatModel = await OpenRouterService.GetLastUsedChatModelIdAsync();
+        if (!string.IsNullOrEmpty(lastUsedChatModel))
+        {
+            selectedModelId = lastUsedChatModel;
+        }
+        else
+        {
+            string? preferredModel = await OpenRouterService.GetSelectedModelIdAsync(); // From user preferences modal
+            if (!string.IsNullOrEmpty(preferredModel))
+            {
+                selectedModelId = preferredModel;
+            }
+            // Fallback to first available model if none selected/remembered is handled in OnInitializedAsync main body
+        }
+    }
+
+    private async Task LoadUserContextAsync()
+    {
+        _userContext = await OpenRouterService.LoadUserContextAsync() ?? new UserContextModel();
+        // _userContext.Projects will be an empty list here, as OpenRouterService no longer loads them.
+        // If ChatPanel needs the projects list for other UI purposes (not just AI context),
+        // it would need to call ProjectService.GetProjectsAsync() and populate _userContext.Projects itself.
+        // For now, projects for AI are loaded directly in HandleSendAsync.
+    }
+
+    private string StripOptionMarkers(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return string.Empty;
+        return OptionsMarkerRegex.Replace(text, string.Empty).Trim();
+    }
+
+    private void HandleAddTaskFromSuggestion(AiTaskSuggestion taskSuggestion)
+    {
+        if (taskSuggestion == null) 
+        {
+            Logger.LogWarning("HandleAddTaskFromSuggestion called with null taskSuggestion.");
+            return;
+        }
+
+        Logger.LogInformation("HandleAddTaskFromSuggestion called for task: {TaskName}. Requesting modal open.", taskSuggestion.Name);
+        TaskModalService.RequestOpenModal(taskSuggestion);
+        
+        // IsActioned will be set by TaskView via TaskModalService event
+        // StateHasChanged(); // Modal opening will trigger UI updates if necessary.
+    }
+
+    private async Task HandleGenerateTaskSuggestionClickedAsync()
+    {
+        if (isStreaming || messages.Count == 0) return;
+        Logger.LogInformation("[ChatPanel] HandleGenerateTaskSuggestionClickedAsync started.");
+
+        var targetMessageForSuggestion = messages.LastOrDefault(m => m.Sender == ProductivAI_Blazor.Models.ChatMessageSender.Assistant && m.Id.ToString() == _messageIdForPotentialSuggestion) ?? messages.LastOrDefault();
+        if (targetMessageForSuggestion == null)
+        {
+            Logger.LogWarning("[ChatPanel] No suitable target message found for attaching a suggestion.");
+            return;
+        }
+
+        _generatingSuggestionForMessageId = targetMessageForSuggestion.Id.ToString(); // For loading indicator
+
+        _isLoadingTaskSuggestion = true;
+
+        StateHasChanged(); 
+
+        AiTaskSuggestion? newSuggestion = null;
+        try
+        {
+            string userContextJson = await OpenRouterService.GetUserContextJsonAsync();
+            string projectsJson = "[]"; // Placeholder for now   
+
+            var conversationHistoryForApi = messages
+                .Select(m => new ApiChatMessage(
+                    m.Role, 
+                    m.Content?.Replace("@@CAN_SUGGEST_TASK@@", "").Trim() ?? string.Empty))
+                .ToList();
+            
+            Logger.LogInformation("[ChatPanel] Calling OpenRouterService.GetTaskSuggestionFromChatAsync...");
+            newSuggestion = await OpenRouterService.GetTaskSuggestionFromChatAsync(
+                conversationHistoryForApi,
+                userContextJson,
+                projectsJson,
+                _apiKey, 
+                selectedModelId ?? OpenRouterService.AvailableModels.FirstOrDefault()?.Id ?? "openrouter/auto" // Updated fallback
+            );
+            
+            string taskNameForLog = newSuggestion?.Name ?? "N/A (suggestion was null or name was null)";
+            string resultMessage = newSuggestion == null ? "null" : $"object received - Name: '{taskNameForLog}'";
+            Logger.LogInformation($"[ChatPanel] GetTaskSuggestionFromChatAsync returned: {resultMessage}");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "[ChatPanel] Error in HandleGenerateTaskSuggestionClickedAsync");
+            streamingError = $"Error generating task suggestion: {ex.Message}"; 
+        }
+        finally
+        {
+            _isLoadingTaskSuggestion = false;
+            if (newSuggestion != null)
+            {
+                targetMessageForSuggestion.AttachedTaskSuggestion = newSuggestion;
+                await OpenRouterService.SetChatHistoryAsync(messages.ToList()); // Persist chat with new suggestion
+                Logger.LogInformation($"[ChatPanel] Task suggestion '{newSuggestion.Name}' loaded and attached to message ID: {targetMessageForSuggestion.Id}.");
+                _showGenerateSuggestionButton = false; // Hide button after successfully generating and attaching suggestion
+            }
+            else
+            {
+                Logger.LogWarning("[ChatPanel] Task suggestion is null after attempt.");
+                // Button remains visible if _showGenerateSuggestionButton was true and generation failed, as it's not set to false here.
+                // if (wasButtonInitiallyVisible) { _showGenerateSuggestionButton = true; } // This logic can be refined if needed
+            }
+            _generatingSuggestionForMessageId = null; // Clear loading indicator target
+            StateHasChanged();
+        }
+    }
+    
+    private async Task HandleTaskSavedFromSuggestionAsync(AiTaskSuggestion savedSuggestion)
+    {
+        if (savedSuggestion == null) return;
+
+        // Find the message that has this suggestion instance attached.
+        var messageWithSuggestion = messages.FirstOrDefault(m => m.AttachedTaskSuggestion == savedSuggestion);
+
+        if (messageWithSuggestion != null && messageWithSuggestion.AttachedTaskSuggestion != null)
+        {
+            messageWithSuggestion.AttachedTaskSuggestion.IsActioned = true;
+            Logger.LogInformation($"Task from suggestion '{savedSuggestion.Name}' (message ID: {messageWithSuggestion.Id}) confirmed saved. Marked as actioned.");
+            await OpenRouterService.SetChatHistoryAsync(messages.ToList()); // Persist change
+            StateHasChanged();
+        }
+        else
+        {
+            Logger.LogWarning($"Could not find message for saved suggestion '{savedSuggestion.Name}' to mark as actioned.");
+        }
+    }
+
+    private async Task LoadAndDisplayQuickReplyOptions(ProductivAI_Blazor.Models.ChatMessage assistantMessage, string aiResponseContent)
+    {
+        // First, attempt to get quick reply options
+        _isLoadingOptions = true;
+        _optionsForMessageId = assistantMessage.Id.ToString(); 
+        StateHasChanged();
+
+        try
+        {
+            var conversationContextForOptions = messages
+                .Where(m => m.Id != assistantMessage.Id) // Exclude the current assistant message itself for options context if needed
+                .ToList(); 
+
+            _currentQuickReplyOptions = await OpenRouterService.GetQuickReplyOptionsAsync(
+                aiResponseContent, 
+                conversationContextForOptions,
+                _userContext, 
+                _apiKey, 
+                selectedModelId ?? OpenRouterService.AvailableModels.FirstOrDefault()?.Id ?? string.Empty
+            );
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error fetching quick reply options: {ex.Message}");
+            _currentQuickReplyOptions = new List<string>(); // Ensure it's empty on error
+        }
+        finally
+        {
+            _isLoadingOptions = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleSetDueDateAsync()
+    {
+        if (_selectedDueDate.HasValue)
+        {
+            string formattedDate = _selectedDueDate.Value.ToString("yyyy-MM-dd");
+            userInput = $"Due date: {formattedDate}";
+
+            // Hide date picker
+            _showDatePicker = false;
+            _messageIdForDatePicker = null;
+            // _selectedDueDate is already captured by the input binding
+
+            StateHasChanged(); // Update UI to hide picker
+
+            await HandleSendAsync(); // Send the date as a user message
+        }
+    }
+
+    private void CancelDatePicker()
+    {
+        _showDatePicker = false;
+        _messageIdForDatePicker = null;
+        _selectedDueDate = null;
+        StateHasChanged();
+    }
+
+    // --- Project Suggestion Handlers ---
+    private async Task HandleCreateProjectFromSuggestion(ProjectSuggestionModel suggestion, ProductivAI_Blazor.Models.ChatMessage originatingMessage)
+    {
+        if (suggestion == null) return;
+
+        try
+        {
+            Logger.LogInformation($"Creating project from AI suggestion: {suggestion.Name}");
+            var newProject = new ProjectModel { Name = suggestion.Name, Description = suggestion.Description };
+            var createdProject = await ProjectService.CreateProjectAsync(newProject);
+
+            if (createdProject != null)
+            {
+                suggestion.IsActioned = true;
+                if (originatingMessage.AttachedProjectSuggestion != null) originatingMessage.AttachedProjectSuggestion.IsActioned = true; // Ensure the original message's copy is marked
+                
+                Logger.LogInformation($"Project '{createdProject.Name}' (ID: {createdProject.Id}) created successfully. Storing ID for navigation.");
+                NavStateService.PendingProjectIdToLoad = createdProject.Id; // Store the ID
+                NavigationManager.NavigateTo("/project-planning"); // Navigate without ID in URL
+
+                // Optionally add a new message to the chat confirming creation and prompting for next steps
+                var systemMessage = new ProductivAI_Blazor.Models.ChatMessage(
+                    ProductivAI_Blazor.Models.ChatMessageSender.Assistant,
+                    $"Okay, I've created the project \"{createdProject.Name}\". You can now add tasks to it in the project planning view. Or, we can discuss task ideas for it here.",
+                    selectedModelId // Or a generic system model indicator
+                );
+                messages.Add(systemMessage);
+                await OpenRouterService.SetChatHistoryAsync(messages.ToList());
+            }
+            else
+            {
+                Logger.LogError("Project creation returned null.");
+                // Potentially add an error message to chat?
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error creating project from suggestion.");
+            // Potentially add an error message to chat?
+        }
+        StateHasChanged();
+    }
+
+    private async Task HandleDismissProjectSuggestion(ProductivAI_Blazor.Models.ChatMessage originatingMessage)
+    {
+        if (originatingMessage?.AttachedProjectSuggestion != null)
+        {
+            Logger.LogInformation($"Dismissing project suggestion: {originatingMessage.AttachedProjectSuggestion.Name}");
+            originatingMessage.AttachedProjectSuggestion.IsActioned = true; // Mark as actioned to hide it
+            await OpenRouterService.SetChatHistoryAsync(messages.ToList());
+            StateHasChanged();
+        }
+    }
+    // --- End Project Suggestion Handlers ---
+
+    // --- Task Ideas List Suggestion Handlers ---
+    private async Task HandleSaveTaskIdeasList(SuggestedTaskIdeasListModel confirmedSuggestion, ProductivAI_Blazor.Models.ChatMessage originatingMessage)
+    {
+        if (confirmedSuggestion == null || originatingMessage == null) return;
+
+        Logger.LogInformation($"User approved saving {confirmedSuggestion.IdeaNames.Count} task ideas for Project ID: {confirmedSuggestion.ProjectId}.");
+        int successCount = 0;
+        foreach (var ideaName in confirmedSuggestion.IdeaNames)
+        {
+            if (string.IsNullOrWhiteSpace(ideaName)) continue;
+
+            var newTaskIdea = new TaskItemModel
+            {
+                Name = ideaName.Trim(),
+                ProjectId = confirmedSuggestion.ProjectId,
+                IsIdea = true,
+                CreatedAt = DateTime.UtcNow,
+                Importance = 50 // Default importance for ideas
+            };
+            var createdIdea = await TaskService.CreateTaskAsync(newTaskIdea);
+            if (createdIdea != null) successCount++;
+        }
+
+        if (originatingMessage.AttachedTaskIdeasListSuggestion != null) 
+        {
+            originatingMessage.AttachedTaskIdeasListSuggestion.IsActioned = true;
+        }
+        
+        string feedbackMessage = $"Okay, I've added {successCount} task ideas to Project ID {confirmedSuggestion.ProjectId}.";
+        if (successCount != confirmedSuggestion.IdeaNames.Count)
+        {
+            feedbackMessage += $" ({confirmedSuggestion.IdeaNames.Count - successCount} failed or were duplicates).";
+        }
+        messages.Add(new ProductivAI_Blazor.Models.ChatMessage(ChatMessageSender.Assistant, feedbackMessage, selectedModelId));
+        
+        await TaskModalService.NotifyTaskIdeasBatchSaved(confirmedSuggestion.ProjectId); // Notify ProjectPlanningView
+        await OpenRouterService.SetChatHistoryAsync(messages.ToList());
+        StateHasChanged();
+    }
+
+    private async Task HandleCancelTaskIdeasListReview(ProductivAI_Blazor.Models.ChatMessage originatingMessage)
+    {
+        if (originatingMessage?.AttachedTaskIdeasListSuggestion != null)
+        {
+            Logger.LogInformation($"Dismissing task ideas list suggestion for project ID: {originatingMessage.AttachedTaskIdeasListSuggestion.ProjectId}");
+            originatingMessage.AttachedTaskIdeasListSuggestion.IsActioned = true;
+            await OpenRouterService.SetChatHistoryAsync(messages.ToList());
+            StateHasChanged();
+        }
+    }
+    // --- End Task Ideas List Suggestion Handlers ---
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await base.OnParametersSetAsync();
+        // Logic for NavStateService.IdeaToDiscuss is now handled by HandleIdeaToDiscussChangedByEvent
+        // userInput = ... (this was part of the old logic, ensure userInput is set correctly by the event handler)
+        // StateHasChanged(); (event handler will call this)
+    }
+
+    private void OpenModalForSuggestedTaskAsync(AiTaskSuggestion? taskSuggestion)
+    {
+        if (taskSuggestion == null) return;
+
+        Logger.LogInformation("Opening modal for suggested task: {TaskName}", taskSuggestion.Name);
+        TaskModalService.RequestOpenModal(taskSuggestion);
+    }
+
+    private async Task HandleDevelopDiscussedIdeaWithAi()
+    {
+        Logger.LogInformation($"[ChatPanel] HandleDevelopDiscussedIdeaWithAi CLICKED. _currentlyDiscussedIdea is null? {_currentlyDiscussedIdea == null}. _isDevelopingIdeaWithAi? {_isDevelopingIdeaWithAi}");
+
+        if (_currentlyDiscussedIdea == null || _isDevelopingIdeaWithAi) 
+        {
+            Logger.LogWarning("[ChatPanel] HandleDevelopDiscussedIdeaWithAi exiting early due to conditions.");
+            return;
+        }
+
+        _isDevelopingIdeaWithAi = true;
+        streamingError = null; 
+        StateHasChanged();
+        Logger.LogInformation("[ChatPanel] _isDevelopingIdeaWithAi set to true, StateHasChanged called.");
+
+        TaskItemModel? taskForModal = _currentlyDiscussedIdea; 
+
+        try
+        {
+            string userContextJson = await OpenRouterService.GetUserContextJsonAsync();
+            
+            var conversationHistoryForApi = messages
+                .Select(m => new ProductivAI_Blazor.Models.ApiChatMessage(m.Role, m.Content))
+                .ToList();
+
+            Logger.LogInformation($"[ChatPanel] Calling GetAiEnhancedTaskDevelopmentAsync for idea: '{_currentlyDiscussedIdea.Name}'");
+
+            var aiJsonResponse = await OpenRouterService.GetAiEnhancedTaskDevelopmentAsync(
+                conversationHistoryForApi,
+                _currentlyDiscussedIdea, 
+                userContextJson,
+                _apiKey, 
+                selectedModelId ?? OpenRouterService.AvailableModels.First().Id 
+            );
+
+            if (!string.IsNullOrWhiteSpace(aiJsonResponse))
+            {
+                Logger.LogInformation($"[ChatPanel] Received JSON from AI for task development: {aiJsonResponse}");
+                try
+                {
+                    var aiEnhancedTask = System.Text.Json.JsonSerializer.Deserialize<TaskItemModel>(aiJsonResponse, JsonSerializerOptionsProvider.Options);
+                    if (aiEnhancedTask != null)
+                    {
+                        aiEnhancedTask.ProjectId = aiEnhancedTask.ProjectId ?? _currentlyDiscussedIdea.ProjectId;
+                        aiEnhancedTask.IsIdea = false; 
+                        taskForModal = aiEnhancedTask;
+                        Logger.LogInformation($"[ChatPanel] Successfully deserialized AI-enhanced task: {aiEnhancedTask.Name}");
+                    }
+                    else
+                    {
+                        Logger.LogWarning("[ChatPanel] Failed to deserialize AI JSON response into TaskItemModel.");
+                        streamingError = "AI returned an invalid format for the task details.";
+                    }
+                }
+                catch (System.Text.Json.JsonException jsonEx)
+                {
+                    Logger.LogError(jsonEx, "[ChatPanel] JSON Deserialization error for AI-enhanced task.");
+                    streamingError = "Error processing AI response for task details.";
+                }
+            }
+            else
+            {
+                Logger.LogWarning("[ChatPanel] GetAiEnhancedTaskDevelopmentAsync returned null or empty response.");
+                streamingError = "AI did not provide details for task development. Opening with original idea.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "[ChatPanel] Error in HandleDevelopDiscussedIdeaWithAi");
+            streamingError = "An unexpected error occurred while developing the idea with AI.";
+        }
+        finally
+        {
+            if (taskForModal != null) 
+            {
+                TaskModalService.RequestOpenStandardModal(taskForModal);
+            }
+            _isDevelopingIdeaWithAi = false;
+            _currentlyDiscussedIdea = null; 
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void HandleIdeaToDiscussChangedByEvent()
+    {
+        var ideaToProcess = NavStateService.IdeaToDiscuss;
+        if (ideaToProcess != null)
+        {
+            _currentlyDiscussedIdea = ideaToProcess;
+            userInput = $"Let's discuss the task idea: \"{ideaToProcess.Name}\". Please help me flesh out the details, consider potential subtasks, and estimate its importance.";
+            NavStateService.IdeaToDiscuss = null; // Consume and clear from service. This will fire the event again with null.
+            Logger.LogInformation($"ChatPanel [Event]: Processed idea '{ideaToProcess.Name}'. _currentlyDiscussedIdea is set. userInput updated.");
+            InvokeAsync(StateHasChanged);
+        }
+        else
+        {
+            // This block will be hit when NavStateService.IdeaToDiscuss is set to null (e.g., after consumption above)
+            // We generally don't want to clear _currentlyDiscussedIdea or userInput here, 
+            // as the user might be in the middle of typing or the "Develop Idea" button should still be active
+            // based on _currentlyDiscussedIdea. _currentlyDiscussedIdea is cleared by other actions (like clicking "Develop Idea").
+            Logger.LogInformation("ChatPanel [Event]: NavStateService.IdeaToDiscuss is null.");
+             // We might need to call InvokeAsync(StateHasChanged) here if the banner's visibility depends on NavStateService.IdeaToDiscuss directly,
+             // but it depends on _currentlyDiscussedIdea, which persists until explicitly cleared by ChatPanel logic.
+        }
+    }
+} 

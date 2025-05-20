@@ -1,0 +1,81 @@
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+
+<div class="w-14 bg-dark-bg flex flex-col items-center py-4 space-y-6 flex-shrink-0 h-full border-l border-dark-border">
+    <button title="Tasks" @onclick="@(() => NavigateTo("/"))" 
+            class="p-2 rounded-md @(IsActive("/") ? "text-blue-500 bg-dark-accent" : "text-dark-text-secondary hover:text-dark-text-primary hover:bg-dark-accent")">
+        <i data-lucide="check-square" style="width: 24px; height: 24px;"></i>
+    </button>
+
+    <button title="Notes" @onclick="@(() => NavigateTo("/notes"))" 
+            class="p-2 rounded-md @(IsActive("/notes") ? "text-blue-500 bg-dark-accent" : "text-dark-text-secondary hover:text-dark-text-primary hover:bg-dark-accent")">
+        <i data-lucide="file-text" style="width: 24px; height: 24px;"></i>
+    </button>
+
+    <button title="Project Planning" @onclick="@(() => NavigateTo("/project-planning"))" 
+            class="p-2 rounded-md @(IsActive("/project-planning") ? "text-blue-500 bg-dark-accent" : "text-dark-text-secondary hover:text-dark-text-primary hover:bg-dark-accent")">
+        <i data-lucide="clipboard-list" style="width: 24px; height: 24px;"></i>
+    </button>
+
+    <!-- Add Calendar/Email later -->
+    <div class="flex-grow"></div> <!-- Spacer -->
+
+    <button title="Settings / User Context" @onclick="ToggleSettingsModal" 
+            class="p-2 rounded-md text-dark-text-secondary hover:text-dark-text-primary hover:bg-dark-accent">
+        <i data-lucide="settings" style="width: 24px; height: 24px;"></i>
+    </button>
+</div>
+
+@code {
+    [Parameter] public EventCallback OnToggleSettingsModal { get; set; }
+
+    private string CurrentUri = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        CurrentUri = NavigationManager.Uri;
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        CurrentUri = e.Location;
+        InvokeAsync(StateHasChanged); // Re-render to update active button
+    }
+
+    private void NavigateTo(string uri)
+    {
+        NavigationManager.NavigateTo(uri);
+    }
+
+    private bool IsActive(string uri)
+    {
+        var relativeUri = NavigationManager.ToAbsoluteUri(uri).PathAndQuery;
+        var currentRelativeUri = NavigationManager.ToAbsoluteUri(CurrentUri).PathAndQuery;
+        if (uri == "/")
+        {
+            // Handle cases where TaskView might be at "/" or "/tasks"
+            return currentRelativeUri == "/" || currentRelativeUri.StartsWith("/tasks");
+        }
+        return currentRelativeUri.StartsWith(relativeUri);
+    }
+
+    private async Task ToggleSettingsModal()
+    {
+        if (OnToggleSettingsModal.HasDelegate)
+        {
+            await OnToggleSettingsModal.InvokeAsync();
+        }
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+
+    // To ensure icons are rendered after navigation potentially changes them or if this panel is dynamically shown.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await JSRuntime.InvokeVoidAsync("appInterop.createLucideIcons");
+    }
+} 

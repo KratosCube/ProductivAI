@@ -1,0 +1,66 @@
+@namespace ProductivAI_Blazor.Shared
+
+@if (IsOpen)
+{
+    <div class="absolute inset-0 z-50 flex items-center justify-center p-4" @onclick="HandleBackdropClick">
+        <div class="absolute inset-0 bg-black/60"></div>
+
+        <div class="bg-modal-bg rounded-lg shadow-xl w-full @MaxWidthClass z-10 border border-dark-border mx-auto flex flex-col max-h-[90vh]" @onclick:stopPropagation="true">
+            <!-- Modal Header -->
+            @if (HeaderContent != null || !string.IsNullOrEmpty(Title))
+            {
+                <div class="p-6 pb-4 flex-shrink-0 border-b border-dark-border flex justify-between items-center">
+                    @if (HeaderContent != null)
+                    {
+                        @HeaderContent
+                    }
+                    else if (!string.IsNullOrEmpty(Title))
+                    {
+                        <h3 class="text-lg font-medium text-dark-text-primary">@Title</h3>
+                    }
+                    <button @onclick="CloseModal" class="text-dark-text-secondary hover:text-dark-text-primary">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            }
+
+            <!-- Modal Body -->
+            <div class="flex-grow overflow-y-auto p-6">
+                @BodyContent
+            </div>
+
+            <!-- Modal Footer -->
+            @if (FooterContent != null)
+            {
+                <div class="flex justify-end items-center border-t border-dark-border p-4 flex-shrink-0">
+                    @FooterContent
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public RenderFragment? HeaderContent { get; set; }
+    [Parameter] public RenderFragment? BodyContent { get; set; }
+    [Parameter] public RenderFragment? FooterContent { get; set; }
+    [Parameter] public string MaxWidthClass { get; set; } = "max-w-lg"; // Default max-width
+
+    private async Task CloseModal()
+    {
+        if (OnClose.HasDelegate)
+        {
+            await OnClose.InvokeAsync();
+        }
+    }
+
+    private async Task HandleBackdropClick()
+    {
+        // Only close if backdrop itself is clicked, not content within it.
+        // The stopPropagation on the modal content div handles this.
+        await CloseModal();
+    }
+} 

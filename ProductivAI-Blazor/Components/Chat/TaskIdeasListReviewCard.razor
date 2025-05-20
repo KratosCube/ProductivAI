@@ -1,0 +1,128 @@
+@using ProductivAI_Blazor.Models
+@using Microsoft.Extensions.Logging
+@inject ILogger<TaskIdeasListReviewCard> Logger
+
+@if (Suggestion != null && !Suggestion.IsActioned)
+{
+    <div class="mt-3 mb-2 p-0.5 rounded-lg bg-gradient-to-r from-teal-400 via-cyan-500 to-sky-600 shadow-md">
+        <div class="bg-dark-panel rounded-[calc(0.5rem-2px)] p-4">
+            <h4 class="text-sm font-semibold text-cyan-300 mb-2">AI Task Idea List Suggestion:</h4>
+            <p class="text-xs text-dark-text-secondary mb-1">Project ID: @Suggestion.ProjectId (Review and modify the ideas below)</p>
+
+            @if (_editableIdeaNames == null || !_editableIdeaNames.Any())
+            {
+                <p class="text-xs text-dark-text-secondary italic my-2">No ideas suggested, or list is empty. You can add some below.</p>
+            }
+            else
+            {
+                <ul class="space-y-2 mb-3">
+                    @for (int i = 0; i < _editableIdeaNames.Count; i++)
+                    {
+                        var localIndex = i; // Required for lambda capture
+                        <li class="flex items-center space-x-2">
+                            <input type="text" @bind="_editableIdeaNames[localIndex]" 
+                                   class="flex-grow bg-dark-input border border-dark-border text-dark-text-primary text-sm rounded-md p-1.5 focus:outline-none focus:ring-1 focus:ring-cyan-500" />
+                            <button @onclick="() => RemoveIdea(localIndex)" class="p-1 text-red-400 hover:text-red-600" title="Remove Idea">
+                                <i data-lucide="x-circle" class="w-4 h-4"></i>
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+
+            <div class="flex items-center space-x-2 mb-4">
+                <input type="text" @bind="_newIdeaName" placeholder="Add a new idea name..." 
+                       @onkeydown="HandleNewIdeaInputKeyDown" 
+                       class="flex-grow bg-dark-input border border-dark-border text-dark-text-primary text-sm rounded-md p-1.5 focus:outline-none focus:ring-1 focus:ring-cyan-500" />
+                <button @onclick="AddNewIdea" class="px-3 py-1.5 bg-cyan-600 text-white text-xs rounded-md hover:bg-cyan-700">
+                    Add
+                </button>
+            </div>
+
+            <div class="flex justify-end space-x-2">
+                <button @onclick="HandleCancel" 
+                        class="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white text-xs rounded-md focus:outline-none focus:ring-2 focus:ring-gray-500">
+                    Dismiss
+                </button>
+                <button @onclick="HandleSave" 
+                        class="px-3 py-1 bg-sky-600 hover:bg-sky-700 text-white text-xs rounded-md focus:outline-none focus:ring-2 focus:ring-sky-500">
+                    Save All Ideas to Project
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public SuggestedTaskIdeasListModel? Suggestion { get; set; }
+
+    [Parameter]
+    public EventCallback<SuggestedTaskIdeasListModel> OnSave { get; set; }
+
+    [Parameter]
+    public EventCallback<SuggestedTaskIdeasListModel> OnCancel { get; set; }
+
+    private List<string> _editableIdeaNames = new List<string>();
+    private string _newIdeaName = string.Empty;
+
+    protected override void OnParametersSet()
+    {
+        if (Suggestion != null)
+        {
+            // Clone the list to allow editing without modifying the original Suggestion.IdeaNames directly
+            // until save is clicked.
+            _editableIdeaNames = new List<string>(Suggestion.IdeaNames ?? new List<string>());
+        }
+        else
+        {
+            _editableIdeaNames = new List<string>();
+        }
+        base.OnParametersSet();
+    }
+
+    private void AddNewIdea()
+    {
+        if (!string.IsNullOrWhiteSpace(_newIdeaName))
+        {
+            _editableIdeaNames.Add(_newIdeaName.Trim());
+            _newIdeaName = string.Empty; // Reset input field
+            StateHasChanged(); // Re-render the list
+        }
+    }
+
+    private void HandleNewIdeaInputKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            AddNewIdea();
+        }
+    }
+
+    private void RemoveIdea(int index)
+    {
+        if (index >= 0 && index < _editableIdeaNames.Count)
+        {
+            _editableIdeaNames.RemoveAt(index);
+            StateHasChanged(); // Re-render the list
+        }
+    }
+
+    private async Task HandleSave()
+    {
+        if (Suggestion != null)
+        {
+            // Update the original suggestion object with the edited list before invoking callback
+            Suggestion.IdeaNames = new List<string>(_editableIdeaNames.Where(name => !string.IsNullOrWhiteSpace(name)).ToList()); // Ensure no empty names go through
+            await OnSave.InvokeAsync(Suggestion);
+        }
+    }
+
+    private async Task HandleCancel()
+    {
+        if (Suggestion != null)
+        {
+            await OnCancel.InvokeAsync(Suggestion); // OnCancel still passes the original suggestion for context if needed
+        }
+    }
+} 

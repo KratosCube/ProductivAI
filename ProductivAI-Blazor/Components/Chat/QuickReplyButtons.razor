@@ -1,0 +1,40 @@
+@inject IJSRuntime JSRuntime
+
+@if (Options != null && Options.Any())
+{
+    <div class="quick-reply-button-container mt-2 pt-2 border-t border-dark-accent flex flex-wrap gap-2">
+        @foreach (var optionText in Options)
+        {
+            if (!string.IsNullOrWhiteSpace(optionText))
+            {
+                var buttonClass = "quick-reply-button border text-xs px-3 py-1 rounded-full cursor-pointer transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-blue-500";
+                if (SelectedOptions != null && SelectedOptions.Contains(optionText))
+                {
+                    buttonClass += " selected-option bg-blue-600 border-blue-500 text-white hover:bg-blue-700";
+                }
+                else
+                {
+                    buttonClass += " bg-dark-input border-dark-border text-dark-text-secondary hover:text-dark-text-primary hover:border-blue-500";
+                }
+
+                <button class="@buttonClass"
+                        @onclick="() => HandleOptionClick(optionText)">
+                    @optionText
+                </button>
+            }
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public List<string> Options { get; set; } = new List<string>();
+    [Parameter] public EventCallback<string> OnOptionSelected { get; set; }
+    [Parameter] public HashSet<string> SelectedOptions { get; set; } = new HashSet<string>();
+
+    private async Task HandleOptionClick(string optionText)
+    {
+        await OnOptionSelected.InvokeAsync(optionText);
+    }
+
+
+} 

@@ -1,0 +1,60 @@
+@using ProductivAI_Blazor.Models
+
+@if (Suggestion != null && !Suggestion.IsActioned)
+{
+    <div class="mt-3 mb-2 p-0.5 rounded-lg bg-gradient-to-r from-purple-500 via-pink-500 to-red-500 shadow-md">
+        <div class="bg-dark-panel rounded-[calc(0.5rem-2px)] p-4">
+            <h4 class="text-sm font-semibold text-pink-300 mb-2">AI Project Suggestion:</h4>
+            
+            <div class="mb-3">
+                <label for="projectName-@Suggestion.GetHashCode()" class="block text-xs font-medium text-dark-text-secondary mb-1">Project Name:</label>
+                <input type="text" id="projectName-@Suggestion.GetHashCode()" @bind="Suggestion.Name" 
+                       class="w-full bg-dark-input border border-dark-border text-dark-text-primary text-sm rounded-md p-2 focus:outline-none focus:ring-1 focus:ring-pink-500" />
+            </div>
+
+            <div class="mb-4">
+                <label for="projectDescription-@Suggestion.GetHashCode()" class="block text-xs font-medium text-dark-text-secondary mb-1">Description:</label>
+                <textarea id="projectDescription-@Suggestion.GetHashCode()" @bind="Suggestion.Description" rows="3"
+                          class="w-full bg-dark-input border border-dark-border text-dark-text-primary text-sm rounded-md p-2 focus:outline-none focus:ring-1 focus:ring-pink-500"></textarea>
+            </div>
+
+            <div class="flex justify-end space-x-2">
+                <button @onclick="DismissInternal" 
+                        class="px-3 py-1 bg-gray-600 hover:bg-gray-700 text-white text-xs rounded-md focus:outline-none focus:ring-2 focus:ring-gray-500">
+                    Dismiss
+                </button>
+                <button @onclick="CreateProjectInternal" 
+                        class="px-3 py-1 bg-pink-600 hover:bg-pink-700 text-white text-xs rounded-md focus:outline-none focus:ring-2 focus:ring-pink-500">
+                    Create Project
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public ProjectSuggestionModel? Suggestion { get; set; }
+
+    [Parameter]
+    public EventCallback<ProjectSuggestionModel> OnCreateProject { get; set; }
+
+    [Parameter]
+    public EventCallback<ProjectSuggestionModel> OnDismiss { get; set; }
+
+    private async Task CreateProjectInternal()
+    {
+        if (Suggestion != null)
+        {
+            await OnCreateProject.InvokeAsync(Suggestion);
+        }
+    }
+
+    private async Task DismissInternal()
+    {
+        if (Suggestion != null)
+        {
+            await OnDismiss.InvokeAsync(Suggestion);
+        }
+    }
+} 

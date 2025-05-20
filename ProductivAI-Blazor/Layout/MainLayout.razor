@@ -1,0 +1,1281 @@
+﻿@inherits LayoutComponentBase
+@inject IJSRuntime JSRuntime
+@inject NavigationManager NavigationManager
+@using ProductivAI_Blazor.Models 
+@inject OpenRouterService OpenRouterService 
+@inject ProjectService ProjectService
+@inject ProductivAI_Blazor.Services.TaskService TaskService
+@inject ProductivAI_Blazor.Services.TaskModalService TaskModalService
+@inject ILogger<MainLayout> Logger
+@implements IDisposable
+
+<div class="flex h-screen bg-dark-bg text-dark-text-primary font-sans overflow-hidden">
+    <!-- Chat Panel Container -->
+    <div class="flex-shrink-0 transition-all duration-300 ease-in-out bg-dark-panel border-r border-dark-border"
+         style="flex-basis: @(isChatPanelMaximized ? "60%" : "33.3333%"); min-width: 300px;">
+        <ChatPanel IsMaximized="isChatPanelMaximized" OnToggle="ToggleChatPanelMaximize" />
+    </div>
+
+    <!-- Main Content Area (Center) -->
+    <main class="flex-1 bg-dark-bg flex flex-col h-full overflow-hidden">
+        <ErrorBoundary @ref="_errorBoundary">
+            <ChildContent>
+        <article class="flex-1 overflow-y-auto p-6 relative">
+            @Body
+
+            <!-- Standard Task Modal START -->
+            @if (isTaskModalOpen_MainLayout)
+            {
+                <div class="absolute inset-0 z-50 flex items-center justify-center p-4" @onclick="CloseTaskModal_MainLayout">
+                    <div class="absolute inset-0 bg-black/60"></div>
+
+                    <div class="flex flex-col md:flex-row md:space-x-4 items-start w-full max-w-4xl mx-auto z-10 p-4" @onclick:stopPropagation="true">
+                        <!-- Left Panel: Main Task Form & Subtask Edit Form -->
+                        <div class="w-full @(newTask_MainLayout.Subtasks.Any() ? "md:w-2/3" : "md:w-full") bg-modal-bg rounded-lg shadow-xl border border-dark-border flex flex-col max-h-[90vh] transition-all duration-300 ease-in-out">
+                            <!-- Modal Header -->
+                            <div class="p-6 pb-4 flex-shrink-0 border-b border-dark-border flex justify-between items-center">
+                                <div class="flex-grow mr-4">
+                                    @if (taskToEdit_MainLayout == null)
+                                    {
+                                        <h3 class="text-lg font-medium text-dark-text-primary">Add New Task</h3>
+                                    }
+                                    else
+                                    {
+                                        @if (isEditingTaskNameInModal_MainLayout)
+                                        {
+                                            <InputText @bind-Value="newTask_MainLayout.Name"
+                                                       class="text-lg font-medium text-dark-text-primary bg-dark-input border border-dark-border rounded-md px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 w-full"
+                                                       placeholder="Task Name..."
+                                                       @onkeydown="HandleTaskNameKeyDown_MainLayout"
+                                                       @onblur="FinishEditingTaskName_MainLayout" />
+                                            <ValidationMessage For="() => newTask_MainLayout.Name" />
+                                        }
+                                        else
+                                        {
+                                            <div class="group flex items-center cursor-pointer" @onclick="StartEditingTaskName_MainLayout">
+                                                <h3 class="text-lg font-medium text-dark-text-primary mr-2">@newTask_MainLayout.Name</h3>
+                                                <button type="button" class="text-dark-text-secondary hover:text-dark-text-primary opacity-0 group-hover:opacity-100 transition-opacity p-1"
+                                                        @onclick="StartEditingTaskName_MainLayout" @onclick:stopPropagation>
+                                                    <i data-lucide="pencil" class="w-4 h-4"></i>
+                                                </button>
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                                <button @onclick="CloseTaskModal_MainLayout" class="text-dark-text-secondary hover:text-dark-text-primary flex-shrink-0">
+                                    <i data-lucide="x" class="w-5 h-5"></i>
+                                </button>
+                            </div>
+
+                            <!-- Modal Body (Forms) -->
+                            <div class="flex-grow overflow-y-auto p-6">
+                                @if (!string.IsNullOrEmpty(taskModalErrorMessage))
+                                {
+                                    <div class="mb-3 p-2 bg-red-100 text-red-700 rounded border border-red-300 text-sm">@taskModalErrorMessage</div>
+                                }
+                                <EditForm Model="@newTask_MainLayout" OnValidSubmit="HandleTaskFormSubmit_MainLayout" Id="task-form-for-mainlayout" class="flex flex-col flex-grow min-h-0">
+                                    <DataAnnotationsValidator />
+                                    <div class="space-y-4 flex-grow">
+                                        @if (taskToEdit_MainLayout == null)
+                                        {
+                                            <div>
+                                                <label for="task-name-ml-new" class="block text-sm font-medium text-dark-text-secondary mb-1">Task Name <span class="text-red-500">*</span></label>
+                                                <InputText id="task-name-ml-new" @bind-Value="newTask_MainLayout.Name" class="w-full bg-dark-input border border-dark-border rounded-md px-3 py-2 text-sm text-dark-text-primary placeholder-dark-text-secondary focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500" placeholder="Enter task name..." />
+                                                <ValidationMessage For="() => newTask_MainLayout.Name" />
+                                            </div>
+                                        }
+                                        <div>
+                                            <label for="task-ai-context-ml" class="block text-sm font-medium text-dark-text-secondary mb-1">AI Context (Optional)</label>
+                                            <InputTextArea id="task-ai-context-ml" @bind-Value="newTask_MainLayout.AiContext" rows="2" class="w-full bg-dark-input border border-dark-border rounded-md px-3 py-2 text-sm text-dark-text-primary placeholder-dark-text-secondary focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none" placeholder="Provide specific context for the AI..." />
+                                        </div>
+
+                                        <div class="border-t border-dark-border pt-4">
+                                            <label class="block text-sm font-medium text-dark-text-secondary mb-2">Task Details</label>
+                                            <div class="mb-3">
+                                                <label for="task-importance-ml" class="block text-xs text-dark-text-secondary mb-1">Importance: <span class="font-semibold">@newTask_MainLayout.Importance</span></label>
+                                                <input type="range" id="task-importance-ml" @bind="newTask_MainLayout.Importance" @bind:event="oninput" min="0" max="100" class="w-full" />
+                                            </div>
+                                            <div class="mb-3">
+                                                <label for="task-project-select-ml" class="block text-sm font-medium text-dark-text-secondary mb-1">Project</label>
+                                                @if (isLoadingProjects_MainLayout)
+                                                {
+                                                    <p class="text-sm text-dark-text-secondary">Loading projects...</p>
+                                                }
+                                                else
+                                                {
+                                                    <InputSelect id="task-project-select-ml" @bind-Value="newTask_MainLayout.ProjectId" class="w-full bg-dark-input border border-dark-border rounded-md px-3 py-2 text-sm text-dark-text-primary focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500">
+                                                        <option value="">-- No Project --</option>
+                                                        @if (projects_MainLayout != null)
+                                                        {
+                                                            @foreach (var project in projects_MainLayout.OrderBy(p => p.Name))
+                                                            {
+                                                                <option value="@project.Id.ToString()">@project.Name</option>
+                                                            }
+                                                        }
+                                                    </InputSelect>
+                                                }
+                                            </div>
+                                            <div>
+                                                <label for="task-context-details-ml" class="block text-sm font-medium text-dark-text-secondary mb-1">Context Details</label>
+                                                <InputTextArea id="task-context-details-ml" @bind-Value="newTask_MainLayout.ContextDetails" rows="3" class="w-full bg-dark-input border border-dark-border rounded-md px-3 py-2 text-sm text-dark-text-primary placeholder-dark-text-secondary focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none" placeholder="Add details for AI..." />
+                                            </div>
+                                        </div>
+
+                                        <div class="mb-4">
+                                            <label for="task-due-date-ml" class="block text-sm font-medium text-dark-text-secondary mb-1">Due Date</label>
+                                            <InputDate id="task-due-date-ml" @bind-Value="newTask_MainLayout.DueDate" class="w-full bg-dark-input border border-dark-border rounded-md px-3 py-2 text-sm text-dark-text-primary focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500" style="color-scheme: dark;" />
+                                        </div>
+
+                                        <div class="flex items-center justify-between">
+                                            <label for="task-recurring-ml" class="text-sm font-medium text-dark-text-secondary">Recurring</label>
+                                            <InputCheckbox id="task-recurring-ml" @bind-Value="newTask_MainLayout.IsRecurring" class="form-checkbox h-4 w-4 text-blue-600 rounded border-dark-border focus:ring-blue-500" />
+                                        </div>
+                                    </div>
+
+                                    <!-- Subtask Add/Edit Form Section -->
+                                    <div class="mt-auto pt-4 border-t border-dark-border flex-shrink-0">
+                                        <div class="flex justify-between items-center mb-3">
+                                            <h4 class="text-md font-semibold text-dark-text-secondary">
+                                                @(isEditingSubtask_MainLayout ? "Edit Subtask" : "Add New Subtask")
+                                            </h4>
+                                            @if (!isEditingSubtask_MainLayout)
+                                            {
+                                                <button type="button" @onclick="ToggleSubtaskForm_MainLayout" class="text-dark-text-secondary hover:text-dark-text-primary p-1 rounded-md">
+                                                    <i data-lucide="@(isSubtaskFormExpanded_MainLayout ? "chevron-up" : "chevron-down")" class="w-5 h-5"></i>
+                                                </button>
+                                            }
+                                        </div>
+
+                                        @if (isSubtaskFormExpanded_MainLayout || isEditingSubtask_MainLayout)
+                                        {
+                                            <div class="transition-all duration-300 ease-in-out @(isSubtaskFormExpanded_MainLayout || isEditingSubtask_MainLayout ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0 overflow-hidden")">
+                                                <EditForm Model="@currentSubtaskForEdit_MainLayout" OnValidSubmit="HandleValidSubtaskSubmit_MainLayout" Context="subtaskFormContext_MainLayout">
+                                                    <DataAnnotationsValidator />
+                                                    <div class="space-y-3">
+                                                        <div>
+                                                            <InputText @bind-Value="currentSubtaskForEdit_MainLayout.Name" class="w-full bg-dark-input border border-dark-border rounded-md px-3 py-1.5 text-sm text-dark-text-primary placeholder-dark-text-secondary focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Subtask name..." />
+                                                            <ValidationMessage For="() => currentSubtaskForEdit_MainLayout.Name" />
+                                                        </div>
+                                                        <div class="grid grid-cols-2 gap-3">
+                                                            <div>
+                                                                <label class="block text-xs text-dark-text-secondary mb-1">Due Date (Optional)</label>
+                                                                <InputDate @bind-Value="currentSubtaskForEdit_MainLayout.DueDate" class="w-full bg-dark-input border border-dark-border rounded-md px-3 py-1.5 text-sm text-dark-text-primary focus:outline-none focus:ring-1 focus:ring-blue-500" style="color-scheme: dark;" />
+                                                            </div>
+                                                            <div>
+                                                                <label class="block text-xs text-dark-text-secondary mb-1">Importance: <span>@currentSubtaskForEdit_MainLayout.Importance</span></label>
+                                                                <input type="range" @bind="currentSubtaskForEdit_MainLayout.Importance" @bind:event="oninput" min="0" max="100" class="w-full" />
+                                                            </div>
+                                                        </div>
+                                                        <div>
+                                                            <InputTextArea @bind-Value="currentSubtaskForEdit_MainLayout.Context" rows="2" class="w-full bg-dark-input border border-dark-border rounded-md px-3 py-1.5 text-sm text-dark-text-primary placeholder-dark-text-secondary focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none" placeholder="Subtask context (optional)..." />
+                                                        </div>
+                                                        <div class="flex justify-end space-x-2">
+                                                            @if (isEditingSubtask_MainLayout)
+                                                            {
+                                                                <button type="button" @onclick="CancelSubtaskEdit_MainLayout" class="px-3 py-1.5 text-xs bg-dark-border text-dark-text-secondary rounded-md hover:bg-opacity-80">Cancel Edit</button>
+                                                            }
+                                                            <button type="submit" class="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700">@(isEditingSubtask_MainLayout ? "Update Subtask" : "Add Subtask")</button>
+                                                        </div>
+                                                    </div>
+                                                </EditForm>
+                                            </div>
+                                        }
+                                    </div>
+                                </EditForm>
+                            </div>
+                            <!-- Modal Footer -->
+                            <div class="flex justify-end items-center border-t border-dark-border p-4 flex-shrink-0">
+                                <button type="button" class="px-3 py-2 bg-dark-accent text-dark-text-primary text-sm font-medium rounded-md hover:bg-opacity-80 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-modal-bg focus:ring-dark-accent" @onclick="CloseTaskModal_MainLayout">Cancel</button>
+                                <button type="submit" form="task-form-for-mainlayout" class="px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-modal-bg focus:ring-blue-500 ml-2">@(taskToEdit_MainLayout == null ? "Add Task" : "Save Changes")</button>
+                            </div>
+                        </div>
+
+                        <!-- Right Column: Subtasks Display Panel -->
+                        @if (newTask_MainLayout.Subtasks.Any())
+                        {
+                            <div class="w-full md:w-1/3 bg-dark-panel rounded-lg shadow-xl border border-dark-border flex flex-col max-h-[80vh] mt-4 md:mt-0">
+                                <div class="p-4 border-b border-dark-border flex-shrink-0">
+                                    <h4 class="text-md font-semibold text-dark-text-primary">Subtasks</h4>
+                                </div>
+                                <div class="flex-grow overflow-y-auto p-4 space-y-2">
+                                    <ul class="space-y-2">
+                                        @foreach (var subtask in newTask_MainLayout.Subtasks.OrderByDescending(s => s.Importance).ThenBy(s => s.CreatedAt))
+                                        {
+                                            <li class="bg-dark-input p-3 rounded border border-dark-accent flex flex-col space-y-1.5">
+                                                <div class="flex items-center justify-between">
+                                                    <div class="flex items-center space-x-2 flex-grow min-w-0">
+                                                        <InputCheckbox @bind-Value="subtask.IsCompleted" class="form-checkbox h-4 w-4 text-blue-600 rounded border-dark-border focus:ring-blue-500 flex-shrink-0" id="@($"subtask-cb-disp-ml-{subtask.Id}-{subtask.TempIdForClientEditing}")" />
+                                                        <label for="@($"subtask-cb-disp-ml-{subtask.Id}-{subtask.TempIdForClientEditing}")" class="@(subtask.IsCompleted ? "line-through text-dark-text-secondary" : "text-dark-text-primary") text-sm font-medium truncate cursor-pointer" title="@subtask.Name">
+                                                            @TruncateString(subtask.Name, 35)
+                                                        </label>
+                                                    </div>
+                                                    <div class="flex items-center space-x-1 flex-shrink-0">
+                                                        <button type="button" @onclick="() => StartEditSubtask_MainLayout(subtask)" class="text-dark-text-secondary hover:text-blue-400 p-0.5" title="Edit Subtask">
+                                                            <i data-lucide="pencil" style="width:14px; height:14px;"></i>
+                                                        </button>
+                                                        @if (subtask.IsCompleted)
+                                                        {
+                                                            <button type="button" @onclick="() => DeleteSubtask_MainLayout(subtask)" class="text-dark-text-secondary hover:text-red-400 p-0.5" title="Delete Subtask">
+                                                                <i data-lucide="trash-2" style="width:14px; height:14px;"></i>
+                                                            </button>
+                                                        }
+                                                    </div>
+                                                </div>
+                                                @if (!string.IsNullOrWhiteSpace(subtask.Context))
+                                                {
+                                                    <p class="text-xs text-dark-text-secondary/80 mt-0.5 truncate" title="@subtask.Context">
+                                                        <strong>Context:</strong> @TruncateString(subtask.Context, 50)
+                                                    </p>
+                                                }
+                                                <div class="flex items-center justify-between text-xs text-dark-text-secondary mt-0.5">
+                                                    <span>
+                                                        @if (subtask.DueDate.HasValue)
+                                                        {
+                                                            <span class="mr-2" title="Due Date"><i data-lucide="calendar" class="inline-block mr-1" style="width:12px; height:12px; vertical-align: -0.05em;"></i>@subtask.DueDate.Value.ToString("MMM dd")</span>
+                                                        }
+                                                        <span title="Importance"><i data-lucide="bar-chart-2" class="inline-block mr-1" style="width:12px; height:12px; transform: rotate(90deg); vertical-align: -0.05em;"></i>Imp: @subtask.Importance</span>
+                                                    </span>
+                                                </div>
+                                            </li>
+                                        }
+                                    </ul>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+            <!-- Standard Task Modal END -->
+
+            @if (isUserContextModalOpen)
+            {
+                <div @onclick="ToggleUserContextModal" class="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-40">
+                    <div @onclick:stopPropagation class="bg-dark-panel rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+                        <!-- Header -->
+                        <div class="p-6 pb-4 border-b border-dark-border flex justify-between items-start">
+                             <div>
+                                <h3 class="text-lg font-medium text-dark-text-primary">User Context</h3>
+                                <p class="text-xs text-dark-text-secondary">The more context you provide, the better AI Agents can assist you.</p>
+                            </div>
+                            <button @onclick="ToggleUserContextModal" class="text-dark-text-secondary hover:text-dark-text-primary">
+                                <i data-lucide="x" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+
+                        <!-- Body (Scrollable) -->
+                        <div class="flex-grow overflow-y-auto p-6">
+                            <EditForm Model="@userContext" OnValidSubmit="HandleSaveUserContext" Id="user-context-form" class="space-y-4">
+                                <DataAnnotationsValidator />
+
+                                <div class="context-section relative">
+                                    <label for="work-description" class="block text-sm font-medium text-dark-text-secondary mb-1">Work Description</label>
+                                            <InputTextArea id="work-description" @bind-Value="_intermediateWorkDescription" @oninput="OnWorkDescriptionInput" placeholder="Describe your main role or type of work..." class="w-full bg-dark-input border border-dark-border rounded-md px-3 py-2 text-sm text-dark-text-primary placeholder-dark-text-secondary focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none" maxlength="2000" />
+                                    <ValidationMessage For="() => userContext.WorkDescription"/>
+                                            <div class="absolute bottom-2 right-2 flex items-center space-x-2">
+                                                @{ var workPill = GetCharCountPillInfo(userContext.WorkDescription, 2000); }
+                                                <span class="char-pill @workPill.CssClass">@workPill.Text</span>
+                                                <span class="text-xs text-dark-text-secondary">@($"{userContext.WorkDescription?.Length ?? 0} / 2000")</span>
+                                            </div>
+                                </div>
+
+                                <div class="context-section relative">
+                                    <label for="short-term-focus" class="block text-sm font-medium text-dark-text-secondary mb-1">Short-Term Focus</label>
+                                            <InputTextArea id="short-term-focus" @bind-Value="_intermediateShortTermFocus" @oninput="OnShortTermFocusInput" placeholder="What are your immediate tasks or objectives?" class="w-full bg-dark-input border border-dark-border rounded-md px-3 py-2 text-sm text-dark-text-primary placeholder-dark-text-secondary focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none" maxlength="1000" />
+                                    <ValidationMessage For="() => userContext.ShortTermFocus"/>
+                                            <div class="absolute bottom-2 right-2 flex items-center space-x-2">
+                                                @{ var shortTermPill = GetCharCountPillInfo(userContext.ShortTermFocus, 1000); }
+                                                <span class="char-pill @shortTermPill.CssClass">@shortTermPill.Text</span>
+                                                <span class="text-xs text-dark-text-secondary">@($"{userContext.ShortTermFocus?.Length ?? 0} / 1000")</span>
+                                            </div>
+                                </div>
+
+                                <div class="context-section relative">
+                                    <label for="long-term-goals" class="block text-sm font-medium text-dark-text-secondary mb-1">Long-Term Goals</label>
+                                            <InputTextArea id="long-term-goals" @bind-Value="_intermediateLongTermGoals" @oninput="OnLongTermGoalsInput" placeholder="What are your broader objectives or aspirations?" class="w-full bg-dark-input border border-dark-border rounded-md px-3 py-2 text-sm text-dark-text-primary placeholder-dark-text-secondary focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none" maxlength="1000" />
+                                    <ValidationMessage For="() => userContext.LongTermGoals"/>
+                                            <div class="absolute bottom-2 right-2 flex items-center space-x-2">
+                                                @{ var longTermPill = GetCharCountPillInfo(userContext.LongTermGoals, 1000); }
+                                                <span class="char-pill @longTermPill.CssClass">@longTermPill.Text</span>
+                                                <span class="text-xs text-dark-text-secondary">@($"{userContext.LongTermGoals?.Length ?? 0} / 1000")</span>
+                                            </div>
+                                </div>
+                                
+                                <div class="context-section relative">
+                                    <label for="other-context" class="block text-sm font-medium text-dark-text-secondary mb-1">Other Relevant Context</label>
+                                            <InputTextArea id="other-context" @bind-Value="_intermediateOtherContext" @oninput="OnOtherContextInput" placeholder="Any other details, preferences, or constraints AI should know?" class="w-full bg-dark-input border border-dark-border rounded-md px-3 py-2 text-sm text-dark-text-primary placeholder-dark-text-secondary focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 resize-none" maxlength="2000" />
+                                    <ValidationMessage For="() => userContext.OtherContext"/>
+                                            <div class="absolute bottom-2 right-2 flex items-center space-x-2">
+                                                @{ var otherContextPill = GetCharCountPillInfo(userContext.OtherContext, 2000); }
+                                                <span class="char-pill @otherContextPill.CssClass">@otherContextPill.Text</span>
+                                                <span class="text-xs text-dark-text-secondary">@($"{userContext.OtherContext?.Length ?? 0} / 2000")</span>
+                                            </div>
+                                </div>
+
+                                <div>
+                                    <label for="sorting-preference" class="block text-sm font-medium text-dark-text-secondary mb-1">Task Sorting Preference</label>
+                                    <InputSelect id="sorting-preference" @bind-Value="userContext.SortingPreference" class="w-full bg-dark-input border border-dark-border rounded-md px-3 py-2 text-sm text-dark-text-primary focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500">
+                                        <option value="manual">Manual</option>
+                                        <option value="importance">By Importance</option>
+                                        <option value="due_date">By Due Date</option>
+                                    </InputSelect>
+                                </div>
+                                
+                                <div>
+                                    <label for="ai-model-select" class="block text-sm font-medium text-dark-text-secondary mb-1">Preferred AI Model</label>
+                                    <InputSelect id="ai-model-select" @bind-Value="userContext.SelectedAiModel" class="w-full bg-dark-input border border-dark-border rounded-md px-3 py-2 text-sm text-dark-text-primary focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500">
+                                        <option value="">-- Select Model --</option>
+                                        @foreach (var model in OpenRouterService.AvailableModels)
+                                        {
+                                            <option value="@model.Id">@model.Name (ID: @model.Id)</option>
+                                        }
+                                    </InputSelect>
+                                </div>
+
+                                        <!-- Project Management Section START -->
+                                        <div class="border-t border-dark-border pt-4 mt-6">
+                                    <h4 class="text-md font-medium text-dark-text-primary mb-3">Manage Projects</h4>
+                                            
+                                            @if (_projectToEdit == null)
+                                            {
+                                                <!-- Add Project Form -->
+                                                <EditForm Model="@_newProject" OnValidSubmit="HandleAddProject" class="space-y-3 mb-4 p-3 border border-dark-accent rounded-md" Context="AddProjectForm">
+                                                    <DataAnnotationsValidator />
+                                                    <div>
+                                                        <label for="new-project-name" class="block text-xs font-medium text-dark-text-secondary">Project Name</label>
+                                                        <InputText id="new-project-name" @bind-Value="_newProject.Name" class="mt-1 w-full bg-dark-input border-dark-border rounded-md px-3 py-1.5 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="New project name" />
+                                                        <ValidationMessage For="@(() => _newProject.Name)" />
+                                                    </div>
+                                                    <div>
+                                                        <label for="new-project-description" class="block text-xs font-medium text-dark-text-secondary">Description (Optional)</label>
+                                                        <InputTextArea id="new-project-description" @bind-Value="_newProject.Description" class="mt-1 w-full bg-dark-input border-dark-border rounded-md px-3 py-1.5 text-sm focus:ring-blue-500 focus:border-blue-500 resize-none" rows="2" placeholder="Brief project description" />
+                                                    </div>
+                                                    <div>
+                                                        <label for="new-project-color" class="block text-xs font-medium text-dark-text-secondary">Color</label>
+                                                        <InputText type="color" id="new-project-color" @bind-Value="_newProject.Color" class="mt-1 w-full h-8 bg-dark-input border-dark-border rounded-md p-0.5 focus:ring-blue-500 focus:border-blue-500" />
+                                                    </div>
+                                                    <button type="submit" class="w-full px-3 py-1.5 bg-green-600 text-white text-sm font-medium rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-panel focus:ring-green-500">
+                                                        <i data-lucide="plus-circle" class="inline-block w-4 h-4 mr-1"></i> Add Project
+                                                    </button>
+                                                </EditForm>
+                                            }
+                                            else
+                                            {
+                                                <EditForm Model="@_projectToEdit" OnValidSubmit="HandleUpdateProject" class="space-y-3 mb-4 p-3 border border-blue-500 rounded-md" Context="EditProjectForm">
+                                                    <DataAnnotationsValidator />
+                                                    <h5 class="text-sm font-medium text-dark-text-primary mb-2">Edit Project: @_projectToEdit.Name</h5>
+                                                    <div>
+                                                        <label for="edit-project-name" class="block text-xs font-medium text-dark-text-secondary">Project Name</label>
+                                                        <InputText id="edit-project-name" @bind-Value="_projectToEdit.Name" class="mt-1 w-full bg-dark-input border-dark-border rounded-md px-3 py-1.5 text-sm focus:ring-blue-500 focus:border-blue-500" placeholder="Project name" />
+                                                        <ValidationMessage For="@(() => _projectToEdit.Name)" />
+                                                    </div>
+                                                    <div>
+                                                        <label for="edit-project-description" class="block text-xs font-medium text-dark-text-secondary">Description (Optional)</label>
+                                                        <InputTextArea id="edit-project-description" @bind-Value="_projectToEdit.Description" class="mt-1 w-full bg-dark-input border-dark-border rounded-md px-3 py-1.5 text-sm focus:ring-blue-500 focus:border-blue-500 resize-none" rows="2" placeholder="Brief project description" />
+                                                    </div>
+                                                    <div>
+                                                        <label for="edit-project-color" class="block text-xs font-medium text-dark-text-secondary">Color</label>
+                                                        <InputText type="color" id="edit-project-color" @bind-Value="_projectToEdit.Color" class="mt-1 w-full h-8 bg-dark-input border-dark-border rounded-md p-0.5 focus:ring-blue-500 focus:border-blue-500" />
+                                                    </div>
+                                                    <div class="flex space-x-2 mt-3">
+                                                        <button type="button" @onclick="CancelEditProject" class="flex-1 px-3 py-1.5 bg-dark-accent text-dark-text-primary text-sm font-medium rounded-md hover:bg-opacity-80 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-panel focus:ring-dark-accent">
+                                                            Cancel
+                                                        </button>
+                                                        <button type="submit" class="flex-1 px-3 py-1.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-panel focus:ring-blue-500">
+                                                            <i data-lucide="save" class="inline-block w-4 h-4 mr-1"></i> Save Changes
+                                                        </button>
+                                                    </div>
+                                                </EditForm>
+                                            }
+
+                                            <!-- Existing Projects List -->
+                                            @if (userContext.Projects != null && userContext.Projects.Any())
+                                            {
+                                                <h5 class="text-sm font-medium text-dark-text-primary mt-4 mb-2">Existing Projects</h5>
+                                                <ul class="space-y-2 max-h-60 overflow-y-auto pr-2">
+                                                    @foreach (var project in userContext.Projects.OrderByDescending(p => p.CreatedAt))
+                                                    {
+                                                        <li class="flex items-center justify-between p-2 bg-dark-input rounded-md hover:bg-dark-accent group">
+                                                            <div class="flex items-center flex-grow min-w-0 mr-2">
+                                                                <span class="w-3 h-3 rounded-full mr-2 flex-shrink-0" style="background-color: @project.Color;"></span>
+                                                                <div class="flex flex-col min-w-0">
+                                                                    <span class="text-sm font-medium text-dark-text-primary truncate" title="@project.Name">@project.Name</span>
+                                                                    @if (!string.IsNullOrWhiteSpace(project.Description))
+                                                                    {
+                                                                        <span class="text-xs text-dark-text-secondary italic truncate" title="@project.Description">
+                                                                            @TruncateString(project.Description, 40)
+                                                                        </span>
+                                                                    }
+                                                                </div>
+                                                            </div>
+                                                            <div class="flex-shrink-0">
+                                                                <button @onclick="() => HandleEditProjectClicked(project)" @onclick:stopPropagation="true" class="p-1 text-dark-text-secondary hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity" title="Edit Project">
+                                                                    <i data-lucide="pencil" class="w-4 h-4"></i>
+                                                                </button>
+                                                                <button @onclick="() => HandleDeleteProjectClicked(project.Id)" @onclick:stopPropagation="true" class="p-1 text-dark-text-secondary hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" title="Delete Project">
+                                                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                                                </button>
+                                                            </div>
+                                                        </li>
+                                                    }
+                                                </ul>
+                                            }
+                                            else
+                                            {
+                                                <p class="text-xs text-dark-text-secondary italic">No projects added yet.</p>
+                                            }
+                                        </div>
+                                        <!-- Project Management Section END -->
+
+                            </EditForm>
+                        </div>
+
+                        <!-- Footer -->
+                        <div class="p-4 border-t border-dark-border flex-shrink-0 flex justify-end space-x-3">
+                            <button type="button" class="px-4 py-2 bg-dark-accent text-dark-text-primary text-sm font-medium rounded-md hover:bg-opacity-80 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-panel focus:ring-dark-accent" @onclick="ToggleUserContextModal">Cancel</button>
+                            <button type="submit" form="user-context-form" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-dark-panel focus:ring-blue-500">Save Changes</button>
+                        </div>
+                    </div>
+                </div>
+            }
+        </article>
+            </ChildContent>
+            <ErrorContent Context="ex">
+                <div class="p-4 text-red-500">
+                    <h3 class="text-lg font-bold">Oops, something went wrong in the UI!</h3>
+                    <p>An error occurred while trying to render this part of the page.</p>
+                    <p><strong>Error:</strong> @ex.Message</p>
+                    <pre>@ex.StackTrace</pre>
+                    <button @onclick="() => _errorBoundary?.Recover()" class="mt-2 px-3 py-1 bg-red-600 text-white rounded">Try to recover</button>
+                </div>
+            </ErrorContent>
+        </ErrorBoundary>
+    </main>
+
+    <!-- Vertical Nav Panel (Right) -->
+    <VerticalNavPanel OnToggleSettingsModal="ToggleUserContextModal" /> 
+
+</div>
+
+@code {
+    private bool isChatPanelMaximized = false;
+    private bool isUserContextModalOpen = false;
+    private UserContextModel userContext = new UserContextModel();
+    private bool _shouldInitializeModalJS = false;
+    private ErrorBoundary? _errorBoundary; // Reference to the ErrorBoundary
+    
+    private string? _intermediateWorkDescription;
+    private string? _intermediateShortTermFocus;
+    private string? _intermediateLongTermGoals;
+    private string? _intermediateOtherContext;
+
+    private System.Timers.Timer? _workDescriptionTimer;
+    private System.Timers.Timer? _shortTermFocusTimer;
+    private System.Timers.Timer? _longTermGoalsTimer;
+    private System.Timers.Timer? _otherContextTimer;
+
+    // --- Task Modal State --- START ---
+    private bool isTaskModalOpen_MainLayout = false;
+    private TaskItemModel newTask_MainLayout = new TaskItemModel();
+    private TaskItemModel? taskToEdit_MainLayout = null;
+    private SubtaskModel currentSubtaskForEdit_MainLayout = new SubtaskModel();
+    private bool isEditingSubtask_MainLayout = false;
+    private bool isEditingTaskNameInModal_MainLayout = false;
+    private bool isSubtaskFormExpanded_MainLayout = false;
+    private AiTaskSuggestion? _suggestionOriginForCurrentTask_MainLayout;
+    private List<ProjectModel> projects_MainLayout = new List<ProjectModel>();
+    private bool isLoadingProjects_MainLayout = true;
+    private string? taskModalErrorMessage = null;
+    // --- Task Modal State --- END ---
+
+    private const int DebounceTime = 300; // milliseconds
+    private const int MaxTextAreaHeight = 250; // pixels
+    
+    private string? initialSelectedAiModel; 
+
+    private ProjectModel _newProject = new ProjectModel { Color = "#808080" }; // Initialize with default color
+    private ProjectModel? _projectToEdit;
+
+    private record PillInfo(string CssClass, string Text);
+
+    private PillInfo GetCharCountPillInfo(string? currentValue, int maxLength)
+    {
+        if (maxLength <= 0) return new PillInfo("pill-gray", "");
+
+        double currentLength = currentValue?.Length ?? 0;
+        if (currentLength == 0) return new PillInfo("pill-gray", ""); // Gray and no text for empty
+        
+        double percentage = (currentLength / maxLength) * 100;
+
+        if (percentage <= 30) return new PillInfo("pill-red", "Low");      // Low usage: Red
+        if (percentage <= 60) return new PillInfo("pill-yellow", "Medium"); // Medium usage: Yellow
+        return new PillInfo("pill-green", "Great");                     // High usage: Green
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        InitializeTimers();
+        // Load initial user context from localStorage
+        await RefreshUserContextState();
+        // Clear any previous error state when the component initializes
+        _errorBoundary?.Recover();
+
+        // Task Modal Service Subscription
+        TaskModalService.OnOpenStandardTaskModalRequested += HandleOpenStandardTaskModalRequested_MainLayout;
+        TaskModalService.OnOpenTaskModalRequested += HandleOpenAiSuggestionModalRequested_MainLayout; // For AI suggestions
+        await LoadProjectsForTaskModalAsync(); // Load projects for the task modal dropdown
+
+        await base.OnInitializedAsync();
+    }
+
+    private void InitializeTimers()
+    {
+        _workDescriptionTimer = new System.Timers.Timer(DebounceTime);
+        _workDescriptionTimer.Elapsed += async (sender, e) => await HandleDebouncedInputAsync("work-description", _intermediateWorkDescription, val => userContext.WorkDescription = val);
+        _workDescriptionTimer.AutoReset = false;
+
+        _shortTermFocusTimer = new System.Timers.Timer(DebounceTime);
+        _shortTermFocusTimer.Elapsed += async (sender, e) => await HandleDebouncedInputAsync("short-term-focus", _intermediateShortTermFocus, val => userContext.ShortTermFocus = val);
+        _shortTermFocusTimer.AutoReset = false;
+
+        _longTermGoalsTimer = new System.Timers.Timer(DebounceTime);
+        _longTermGoalsTimer.Elapsed += async (sender, e) => await HandleDebouncedInputAsync("long-term-goals", _intermediateLongTermGoals, val => userContext.LongTermGoals = val);
+        _longTermGoalsTimer.AutoReset = false;
+
+        _otherContextTimer = new System.Timers.Timer(DebounceTime);
+        _otherContextTimer.Elapsed += async (sender, e) => await HandleDebouncedInputAsync("other-context", _intermediateOtherContext, val => userContext.OtherContext = val);
+        _otherContextTimer.AutoReset = false;
+    }
+
+    private async Task OnWorkDescriptionInput(ChangeEventArgs e)
+    {
+        _intermediateWorkDescription = e.Value?.ToString();
+        // Call JS resize immediately for responsiveness
+        await JSRuntime.InvokeVoidAsync("appInterop.autoResizeTextArea", "work-description", MaxTextAreaHeight);
+        _workDescriptionTimer?.Stop();
+        _workDescriptionTimer?.Start();
+    }
+
+    private async Task OnShortTermFocusInput(ChangeEventArgs e)
+    {
+        _intermediateShortTermFocus = e.Value?.ToString();
+        await JSRuntime.InvokeVoidAsync("appInterop.autoResizeTextArea", "short-term-focus", MaxTextAreaHeight);
+        _shortTermFocusTimer?.Stop();
+        _shortTermFocusTimer?.Start();
+    }
+
+    private async Task OnLongTermGoalsInput(ChangeEventArgs e)
+    {
+        _intermediateLongTermGoals = e.Value?.ToString();
+        await JSRuntime.InvokeVoidAsync("appInterop.autoResizeTextArea", "long-term-goals", MaxTextAreaHeight);
+        _longTermGoalsTimer?.Stop();
+        _longTermGoalsTimer?.Start();
+    }
+
+    private async Task OnOtherContextInput(ChangeEventArgs e)
+    {
+        _intermediateOtherContext = e.Value?.ToString();
+        await JSRuntime.InvokeVoidAsync("appInterop.autoResizeTextArea", "other-context", MaxTextAreaHeight);
+        _otherContextTimer?.Stop();
+        _otherContextTimer?.Start();
+    }
+
+    private async Task HandleDebouncedInputAsync(string textAreaId, string? newValue, Action<string?> updateUserContextAction)
+    {
+        updateUserContextAction(newValue);
+        // JS resize is now handled immediately on input, so only StateHasChanged is needed here.
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ToggleChatPanelMaximize()
+    {
+        isChatPanelMaximized = !isChatPanelMaximized;
+        InvokeAsync(async () => 
+        {
+            await JSRuntime.InvokeVoidAsync("appInterop.createLucideIcons");
+        });
+    }
+
+    private async Task ToggleUserContextModal() 
+    {
+        await JSRuntime.InvokeVoidAsync("console.log", $"ToggleUserContextModal called. Current state: {isUserContextModalOpen}, New state: {!isUserContextModalOpen}");
+        Console.WriteLine($"ToggleUserContextModal called. Current state: {isUserContextModalOpen}, New state: {!isUserContextModalOpen}"); // Server-side log
+        _errorBoundary?.Recover(); // Clear errors when toggling modal
+
+        isUserContextModalOpen = !isUserContextModalOpen;
+        if (isUserContextModalOpen)
+        {
+            await RefreshUserContextState();
+            _newProject = new ProjectModel { Color = "#808080" }; // Reset add form with default color
+            _projectToEdit = null; 
+            _shouldInitializeModalJS = true; 
+        }
+        else
+        {
+            // Potentially save changes if auto-save on close is desired, or rely on explicit save button.
+            // For now, explicit save is handled by HandleSaveUserContext
+        }
+        StateHasChanged(); 
+    }
+
+    private async Task RefreshUserContextState()
+    {
+            userContext.SelectedAiModel = await OpenRouterService.GetSelectedModelIdAsync();
+        _intermediateWorkDescription = userContext.WorkDescription = await OpenRouterService.GetUserWorkDescriptionAsync();
+        _intermediateShortTermFocus = userContext.ShortTermFocus = await OpenRouterService.GetUserShortTermFocusAsync();
+        _intermediateLongTermGoals = userContext.LongTermGoals = await OpenRouterService.GetUserLongTermGoalsAsync();
+        _intermediateOtherContext = userContext.OtherContext = await OpenRouterService.GetUserOtherContextAsync();
+            userContext.SortingPreference = await OpenRouterService.GetUserSortingPreferenceAsync();
+            
+        // Load projects from ProjectService
+        try
+        {
+            userContext.Projects = await ProjectService.GetProjectsAsync() ?? new List<ProjectModel>();
+        }
+        catch (Exception ex)
+        {
+            // Handle error loading projects, e.g., log and default to empty list
+            Console.WriteLine($"Error loading projects in MainLayout: {ex.Message}");
+            userContext.Projects = new List<ProjectModel>();
+        }
+        
+        initialSelectedAiModel = userContext.SelectedAiModel; 
+        StateHasChanged();
+    }
+
+    private async Task HandleSaveUserContext()
+    {
+        // Ensure debounced values are applied before saving
+        userContext.WorkDescription = _intermediateWorkDescription;
+        userContext.ShortTermFocus = _intermediateShortTermFocus;
+        userContext.LongTermGoals = _intermediateLongTermGoals;
+        userContext.OtherContext = _intermediateOtherContext;
+
+        await OpenRouterService.SetUserWorkDescriptionAsync(userContext.WorkDescription);
+        await OpenRouterService.SetUserShortTermFocusAsync(userContext.ShortTermFocus);
+        await OpenRouterService.SetUserLongTermGoalsAsync(userContext.LongTermGoals);
+        await OpenRouterService.SetUserOtherContextAsync(userContext.OtherContext);
+        await OpenRouterService.SetUserSortingPreferenceAsync(userContext.SortingPreference);
+        
+        // Projects are now saved via ProjectService during their respective Add/Edit/Delete actions
+
+        if (userContext.SelectedAiModel != initialSelectedAiModel)
+        {
+            await OpenRouterService.SetSelectedModelIdAsync(userContext.SelectedAiModel ?? string.Empty);
+            initialSelectedAiModel = userContext.SelectedAiModel;
+        }
+
+        isUserContextModalOpen = false; 
+        StateHasChanged(); 
+    }
+
+    // --- Project Management Methods START ---
+    private async Task HandleAddProject()
+    {
+        if (userContext.Projects == null) 
+        {
+            userContext.Projects = new List<ProjectModel>();
+        }
+
+        if (string.IsNullOrWhiteSpace(_newProject.Name))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Project name cannot be empty.");
+            return;
+        }
+
+        if (userContext.Projects.Any(p => p.Name.Equals(_newProject.Name, StringComparison.OrdinalIgnoreCase)))
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "A project with this name already exists.");
+            return;
+        }
+
+        try
+        {
+            // _newProject already has Name, Description, Color from the form
+            // The Id will be 0 initially, API will assign it.
+            ProjectModel? createdProject = await ProjectService.CreateProjectAsync(_newProject);
+            if (createdProject != null)
+            {
+                userContext.Projects.Add(createdProject); 
+                _newProject = new ProjectModel { Color = "#808080" }; // Reset for next entry with default color
+                StateHasChanged();
+                // await JSRuntime.InvokeVoidAsync("appInterop.createLucideIcons"); // Temporarily commented out
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Failed to create project on the server.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error creating project: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error creating project: {ex.Message}");
+        }
+    }
+
+    private async Task HandleDeleteProject(int projectId)
+    {
+        // Optional: Ask for confirmation
+        // bool confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete project?");
+        // if (!confirmed) return;
+        
+        try
+        {
+            bool success = await ProjectService.DeleteProjectAsync(projectId);
+            if (success)
+            {
+                var projectToRemove = userContext.Projects?.FirstOrDefault(p => p.Id == projectId);
+                if (projectToRemove != null)
+                {
+                    userContext.Projects.Remove(projectToRemove);
+                }
+                if (_projectToEdit?.Id == projectId) 
+                {
+                    _projectToEdit = null;
+                }
+                StateHasChanged();
+            }
+            else
+            {
+                 await JSRuntime.InvokeVoidAsync("alert", "Failed to delete project on the server.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error deleting project: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error deleting project: {ex.Message}");
+        }
+    }
+
+    private void HandleEditProjectClicked(ProjectModel project)
+    {
+        Console.WriteLine($"HandleEditProjectClicked: ENTRY. isUserContextModalOpen = {isUserContextModalOpen}");
+        JSRuntime.InvokeVoidAsync("console.log", $"HandleEditProjectClicked: ENTRY. isUserContextModalOpen = {isUserContextModalOpen}");
+
+        if (project == null)
+        {
+            Console.WriteLine("HandleEditProjectClicked: Received a null project. Aborting.");
+            JSRuntime.InvokeVoidAsync("console.warn", "HandleEditProjectClicked: Received a null project. Aborting.");
+            return;
+        }
+
+        _errorBoundary?.Recover(); // Clear errors before attempting to show edit form
+        JSRuntime.InvokeVoidAsync("console.log", $"HandleEditProjectClicked: ENTRY for project: {project.Name}"); 
+        Console.WriteLine($"HandleEditProjectClicked: ENTRY for project: {project.Name} (ID: {project.Id})"); 
+
+        _projectToEdit = new ProjectModel 
+        {
+            Id = project.Id,
+            Name = project.Name,
+            Description = project.Description,
+            Color = string.IsNullOrEmpty(project.Color) ? "#808080" : project.Color, 
+            CreatedAt = project.CreatedAt
+        };
+
+        Console.WriteLine($"HandleEditProjectClicked: _projectToEdit set. isUserContextModalOpen = {isUserContextModalOpen}. Scheduling StateHasChanged() via InvokeAsync.");
+        JSRuntime.InvokeVoidAsync("console.log", $"HandleEditProjectClicked: _projectToEdit set. isUserContextModalOpen = {isUserContextModalOpen}. Scheduling StateHasChanged() via InvokeAsync.");
+        InvokeAsync(StateHasChanged); 
+        Console.WriteLine($"HandleEditProjectClicked: EXIT. isUserContextModalOpen = {isUserContextModalOpen} (after scheduling StateHasChanged()).");
+        JSRuntime.InvokeVoidAsync("console.log", $"HandleEditProjectClicked: EXIT. isUserContextModalOpen = {isUserContextModalOpen} (after scheduling StateHasChanged()).");
+    }
+
+    private async Task HandleUpdateProject()
+    {
+        if (_projectToEdit == null) return;
+
+        // ID is int for comparison
+        if (userContext.Projects?.Any(p => p.Id != _projectToEdit.Id && p.Name.Equals(_projectToEdit.Name, StringComparison.OrdinalIgnoreCase)) == true)
+        {
+            await JSRuntime.InvokeVoidAsync("alert", "Another project with this name already exists.");
+            return;
+        }
+
+        try
+        {
+            // _projectToEdit now has an int Id
+            bool success = await ProjectService.UpdateProjectAsync(_projectToEdit.Id, _projectToEdit);
+            if (success)
+            {
+                var existingProjectInList = userContext.Projects?.FirstOrDefault(p => p.Id == _projectToEdit.Id);
+                if (existingProjectInList != null)
+                {
+                    existingProjectInList.Name = _projectToEdit.Name;
+                    existingProjectInList.Description = _projectToEdit.Description;
+                    existingProjectInList.Color = _projectToEdit.Color;
+                }
+                _projectToEdit = null; 
+                StateHasChanged();
+                // await JSRuntime.InvokeVoidAsync("appInterop.createLucideIcons"); // Temporarily commented out
+            }
+            else
+            {
+                await JSRuntime.InvokeVoidAsync("alert", "Failed to update project on the server.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error updating project: {ex.Message}");
+            await JSRuntime.InvokeVoidAsync("alert", $"Error updating project: {ex.Message}");
+        }
+    }
+
+    private void CancelEditProject()
+    {
+        _projectToEdit = null;
+        InvokeAsync(StateHasChanged);
+    }
+
+    // New wrapper method for delete button click
+    private async Task HandleDeleteProjectClicked(int projectId)
+    {
+        await JSRuntime.InvokeVoidAsync("console.log", "Delete button clicked for project ID: " + projectId);
+        await HandleDeleteProject(projectId); // Call the original delete logic
+    }
+    // --- Project Management Methods END ---
+
+    // --- Helper method for truncating strings (can be moved to a utility class if needed) ---
+    private string TruncateString(string? value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+        return value.Length <= maxLength ? value : value.Substring(0, maxLength) + "...";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // await JSRuntime.InvokeVoidAsync("appInterop.createLucideIcons"); 
+            // Temporarily comment out for initial load if it causes issues, 
+            // but usually fine here. Let's assume it's fine for firstRender.
+            // The main concern is when _shouldInitializeModalJS is true.
+        }
+        
+        Console.WriteLine($"OnAfterRenderAsync: Called. isUserContextModalOpen = {isUserContextModalOpen}, _projectToEdit is {(_projectToEdit == null ? "null" : "set")}, _shouldInitializeModalJS = {_shouldInitializeModalJS}");
+        JSRuntime.InvokeVoidAsync("console.log", $"OnAfterRenderAsync: Called. isUserContextModalOpen = {isUserContextModalOpen}, _projectToEdit is {(_projectToEdit == null ? "null" : "set")}, _shouldInitializeModalJS = {_shouldInitializeModalJS}");
+
+
+        if (_shouldInitializeModalJS)
+        { // This block executes when the modal is opened or certain state changes within it occur.
+            _shouldInitializeModalJS = false; 
+            Console.WriteLine("OnAfterRenderAsync: _shouldInitializeModalJS is true. Skipping JS calls for debugging edit form.");
+            await JSRuntime.InvokeVoidAsync("console.log", "OnAfterRenderAsync: _shouldInitializeModalJS is true. Skipping JS calls for debugging edit form.");
+            
+            // TEMPORARILY COMMENT OUT THE FOLLOWING JS INTEROP CALLS:
+            // await JSRuntime.InvokeVoidAsync("appInterop.createLucideIcons");
+            
+            // if(isUserContextModalOpen) 
+            // {
+            //     await JSRuntime.InvokeVoidAsync("appInterop.autoResizeTextArea", "work-description", MaxTextAreaHeight);
+            //     await JSRuntime.InvokeVoidAsync("appInterop.autoResizeTextArea", "short-term-focus", MaxTextAreaHeight);
+            //     await JSRuntime.InvokeVoidAsync("appInterop.autoResizeTextArea", "long-term-goals", MaxTextAreaHeight);
+            //     await JSRuntime.InvokeVoidAsync("appInterop.autoResizeTextArea", "other-context", MaxTextAreaHeight);
+            // }
+        }
+        // Ensure icons are created if not in the special debug skip block above
+        // We might still need a general call if no specific condition skips it.
+        // For now, let's rely on other places calling it or test without it if the modal is the issue.
+        // else if (!firstRender) // To avoid double call on first render if _shouldInitializeModalJS was also true
+        // {
+             // This might be too aggressive, let's see if the targeted commenting is enough.
+             // await JSRuntime.InvokeVoidAsync("appInterop.createLucideIcons");
+        // }
+        // COMPLETELY COMMENTING OUT THIS BLOCK FOR NOW
+        // await InvokeAsync(async () => 
+        // {
+        //     // await JSRuntime.InvokeVoidAsync("appInterop.createLucideIcons"); // Temporarily commented out
+        // });
+    }
+
+    public void Dispose()
+    {
+        _workDescriptionTimer?.Dispose();
+        _shortTermFocusTimer?.Dispose();
+        _longTermGoalsTimer?.Dispose();
+        _otherContextTimer?.Dispose();
+
+        // Task Modal Service Unsubscription
+        TaskModalService.OnOpenStandardTaskModalRequested -= HandleOpenStandardTaskModalRequested_MainLayout;
+        TaskModalService.OnOpenTaskModalRequested -= HandleOpenAiSuggestionModalRequested_MainLayout;
+    }
+
+    private async Task CallStateHasChangedForDebug()
+    {
+        await JSRuntime.InvokeVoidAsync("console.log", "DEBUG: Manually calling StateHasChanged() now...");
+        Console.WriteLine("DEBUG: Manually calling StateHasChanged() now...");
+        StateHasChanged();
+    }
+
+    // Method to load projects specifically for the Task modal dropdown
+    private async Task LoadProjectsForTaskModalAsync()
+    {
+        isLoadingProjects_MainLayout = true;
+        try
+        {
+            projects_MainLayout = await ProjectService.GetProjectsAsync() ?? new List<ProjectModel>();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error loading projects for Task Modal in MainLayout");
+            projects_MainLayout = new List<ProjectModel>();
+        }
+        finally
+        {
+            isLoadingProjects_MainLayout = false;
+        }
+        // No StateHasChanged() here as it might be called before UI is ready, modal will get it when it opens.
+    }
+
+    private async void HandleOpenStandardTaskModalRequested_MainLayout(TaskItemModel? task)
+    {
+        Logger.LogInformation("[MainLayout] HandleOpenStandardTaskModalRequested_MainLayout called. Task ID: {TaskId}", task?.Id);
+        await OpenTaskModal_MainLayout(task, null); 
+    }
+
+    // --- Task Modal Methods (Adapted from TaskView.razor) --- START ---
+    private async Task OpenTaskModal_MainLayout(TaskItemModel? task = null, AiTaskSuggestion? suggestion = null)
+    {
+        Logger.LogInformation("[MainLayout] OpenTaskModal_MainLayout called. Task ID: {TaskId}, Task Name: {TaskName}, Suggestion: {SuggestionName}", task?.Id, task?.Name, suggestion?.Name);
+        try
+        {
+            if (projects_MainLayout.Count == 0 && !isLoadingProjects_MainLayout)
+            {
+                Logger.LogInformation("[MainLayout] OpenTaskModal_MainLayout: Projects not loaded, attempting to load.");
+                await LoadProjectsForTaskModalAsync();
+            }
+
+            _suggestionOriginForCurrentTask_MainLayout = suggestion;
+
+            if (task == null && suggestion != null) // Coming from AI suggestion
+            {
+                 Logger.LogInformation("[MainLayout] OpenTaskModal_MainLayout: Opening for AI suggestion: {SuggestionName}", suggestion.Name);
+                int? parsedProjectId = null;
+                if (!string.IsNullOrEmpty(suggestion.ProjectId) && int.TryParse(suggestion.ProjectId, out int tempIntId))
+                {
+                    if (projects_MainLayout.Any(p => p.Id == tempIntId))
+                    {
+                        parsedProjectId = tempIntId;
+                    }
+                    else
+                    {
+                        Logger.LogWarning("[MainLayout] ProjectId {ProjectIdString} from AI suggestion (parsed as int) not found in current projects.", suggestion.ProjectId);
+                    }
+                }
+                else if(!string.IsNullOrEmpty(suggestion.ProjectId))
+                {
+                    Logger.LogWarning("[MainLayout] ProjectId {ProjectIdString} from AI suggestion could not be parsed to int.", suggestion.ProjectId);
+                }
+
+                newTask_MainLayout = new TaskItemModel
+                {
+                    Name = suggestion.Name ?? "Suggested Task",
+                    AiContext = suggestion.AiContext,
+                    Importance = suggestion.Importance,
+                    ProjectId = parsedProjectId,
+                    ContextDetails = suggestion.ContextDetails,
+                    DueDate = !string.IsNullOrEmpty(suggestion.DueDate) && DateTime.TryParse(suggestion.DueDate, out var dueDate) ? dueDate : (DateTime?)null,
+                    Subtasks = suggestion.Subtasks?.Select(s => new SubtaskModel 
+                    {
+                        Name = s.Name ?? "Suggested Subtask",
+                        IsCompleted = false,
+                        DueDate = !string.IsNullOrEmpty(s.DueDate) && DateTime.TryParse(s.DueDate, out var sdDate) ? sdDate : (DateTime?)null,
+                        Importance = s.Importance,
+                        Context = s.Context,
+                        TempIdForClientEditing = Guid.NewGuid(),
+                        CreatedAt = DateTime.UtcNow
+                    }).ToList() ?? new List<SubtaskModel>()
+                };
+                taskToEdit_MainLayout = null; // It's a new task from a suggestion
+            }
+            else if (task == null) // Standard new task
+            {
+                Logger.LogInformation("[MainLayout] OpenTaskModal_MainLayout: Opening for a new standard task.");
+                newTask_MainLayout = new TaskItemModel { Importance = 50 }; // Default importance
+                taskToEdit_MainLayout = null;
+            }
+            else // Editing an existing task (which might have been an idea)
+            {
+                Logger.LogInformation("[MainLayout] OpenTaskModal_MainLayout: Opening to edit task ID {TaskId}", task.Id);
+                taskToEdit_MainLayout = task;
+                newTask_MainLayout = new TaskItemModel
+                {
+                    Id = task.Id,
+                    Name = task.Name,
+                    AiContext = task.AiContext,
+                    Importance = task.Importance,
+                    ProjectId = task.ProjectId,
+                    ContextDetails = task.ContextDetails,
+                    DueDate = task.DueDate,
+                    IsRecurring = task.IsRecurring,
+                    IsCompleted = task.IsCompleted,
+                    IsIdea = task.IsIdea, // Preserve IsIdea when opening for edit
+                    CreatedAt = task.CreatedAt,
+                    Subtasks = new List<SubtaskModel>(task.Subtasks?.Select(s => new SubtaskModel {
+                        Id = s.Id,
+                        TempIdForClientEditing = s.TempIdForClientEditing == Guid.Empty ? Guid.NewGuid() : s.TempIdForClientEditing,
+                        Name = s.Name,
+                        DueDate = s.DueDate,
+                        Importance = s.Importance,
+                        Context = s.Context,
+                        IsCompleted = s.IsCompleted,
+                        CreatedAt = s.CreatedAt
+                    }) ?? new List<SubtaskModel>())
+                };
+            }
+
+            Logger.LogInformation("[MainLayout] OpenTaskModal_MainLayout: Setting isTaskModalOpen_MainLayout = true.");
+            isTaskModalOpen_MainLayout = true;
+            isEditingSubtask_MainLayout = false;
+            currentSubtaskForEdit_MainLayout = new SubtaskModel { Importance = 50, TempIdForClientEditing = Guid.NewGuid() };
+            isSubtaskFormExpanded_MainLayout = newTask_MainLayout.Subtasks.Any();
+
+            Logger.LogInformation("[MainLayout] OpenTaskModal_MainLayout: Calling InvokeAsync(StateHasChanged).");
+            await InvokeAsync(StateHasChanged);
+            Logger.LogInformation("[MainLayout] OpenTaskModal_MainLayout: StateHasChanged invoked. isTaskModalOpen_MainLayout: {IsModalOpen}", isTaskModalOpen_MainLayout);
+
+            await JSRuntime.InvokeVoidAsync("appInterop.createLucideIcons");
+            Logger.LogInformation("[MainLayout] OpenTaskModal_MainLayout: Lucide icons refreshed.");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "[MainLayout] OpenTaskModal_MainLayout: Exception caught.");
+            // Optionally set an error message string to display in UI if modal fails to open
+            isTaskModalOpen_MainLayout = false; // Ensure modal is closed on error
+            await InvokeAsync(StateHasChanged); // Update UI
+        }
+    }
+
+    private void CloseTaskModal_MainLayout()
+    {
+        isTaskModalOpen_MainLayout = false;
+        newTask_MainLayout = new TaskItemModel { Importance = 50 };
+        currentSubtaskForEdit_MainLayout = new SubtaskModel { Importance = 50, TempIdForClientEditing = Guid.NewGuid() };
+        isEditingSubtask_MainLayout = false;
+        taskToEdit_MainLayout = null;
+        _suggestionOriginForCurrentTask_MainLayout = null; // Clear suggestion origin
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleTaskFormSubmit_MainLayout()
+    {
+        Logger.LogInformation("[DEBUG] HandleTaskFormSubmit_MainLayout called. TaskToEdit: {TaskToEditId}, Name: {TaskName}, Importance: {Importance}, ProjectId: {ProjectId}", taskToEdit_MainLayout?.Id, newTask_MainLayout.Name, newTask_MainLayout.Importance, newTask_MainLayout.ProjectId);
+        Console.WriteLine($"[DEBUG] HandleTaskFormSubmit_MainLayout called. TaskToEdit: {taskToEdit_MainLayout?.Id}, Name: {newTask_MainLayout.Name}, Importance: {newTask_MainLayout.Importance}, ProjectId: {newTask_MainLayout.ProjectId}");
+        taskModalErrorMessage = null;
+        bool success = false;
+        TaskItemModel? savedTask = null;
+        newTask_MainLayout.IsIdea = false;
+        if (string.IsNullOrWhiteSpace(newTask_MainLayout.Name))
+        {
+            taskModalErrorMessage = "Task name is required.";
+            Logger.LogWarning("[DEBUG] Task name is empty.");
+            Console.WriteLine("[DEBUG] Task name is empty.");
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+        if (taskToEdit_MainLayout == null)
+        {
+            Logger.LogInformation("[DEBUG] Attempting to create new task: {TaskName}", newTask_MainLayout.Name);
+            Console.WriteLine($"[DEBUG] Attempting to create new task: {newTask_MainLayout.Name}");
+            var createdTask = await TaskService.CreateTaskAsync(newTask_MainLayout);
+            if (createdTask != null)
+            {
+                success = true;
+                savedTask = createdTask;
+                Logger.LogInformation("[DEBUG] Task '{TaskName}' (ID: {TaskId}) created successfully.", createdTask.Name, createdTask.Id);
+                Console.WriteLine($"[DEBUG] Task '{createdTask.Name}' (ID: {createdTask.Id}) created successfully.");
+                if (_suggestionOriginForCurrentTask_MainLayout != null)
+                {
+                    await TaskModalService.NotifyTaskSavedFromSuggestion(_suggestionOriginForCurrentTask_MainLayout);
+                    _suggestionOriginForCurrentTask_MainLayout = null;
+                }
+            }
+            else
+            {
+                Logger.LogWarning("[DEBUG] Task creation returned null for task: {TaskName}", newTask_MainLayout.Name);
+                Console.WriteLine($"[DEBUG] Task creation returned null for task: {newTask_MainLayout.Name}");
+                taskModalErrorMessage = "Failed to add new task. Please try again.";
+            }
+        }
+        else
+        {
+            Logger.LogInformation("[DEBUG] Attempting to update task ID: {TaskId}, Name: {TaskName}", taskToEdit_MainLayout.Id, newTask_MainLayout.Name);
+            Console.WriteLine($"[DEBUG] Attempting to update task ID: {taskToEdit_MainLayout.Id}, Name: {newTask_MainLayout.Name}");
+            success = await TaskService.UpdateTaskAsync(taskToEdit_MainLayout.Id, newTask_MainLayout);
+            if (success)
+            {
+                savedTask = newTask_MainLayout;
+                savedTask.Id = taskToEdit_MainLayout.Id;
+                Logger.LogInformation("[DEBUG] Task '{TaskName}' (ID: {TaskId}) updated successfully.", newTask_MainLayout.Name, taskToEdit_MainLayout.Id);
+                Console.WriteLine($"[DEBUG] Task '{newTask_MainLayout.Name}' (ID: {taskToEdit_MainLayout.Id}) updated successfully.");
+                if (_suggestionOriginForCurrentTask_MainLayout != null)
+                {
+                    await TaskModalService.NotifyTaskSavedFromSuggestion(_suggestionOriginForCurrentTask_MainLayout);
+                    _suggestionOriginForCurrentTask_MainLayout = null;
+                }
+            }
+            else
+            {
+                Logger.LogWarning("[DEBUG] Task update failed for task ID: {TaskId}", taskToEdit_MainLayout.Id);
+                Console.WriteLine($"[DEBUG] Task update failed for task ID: {taskToEdit_MainLayout.Id}");
+                taskModalErrorMessage = "Failed to update task. Please try again.";
+            }
+        }
+        if (success && savedTask != null)
+        {
+            CloseTaskModal_MainLayout();
+            TaskModalService.NotifyStandardTaskSaved(savedTask);
+            await InvokeAsync(StateHasChanged);
+        }
+        else
+        {
+            Logger.LogWarning("[DEBUG] Task save operation was not fully successful for task: {TaskName}", newTask_MainLayout.Name);
+            Console.WriteLine($"[DEBUG] Task save operation was not fully successful for task: {newTask_MainLayout.Name}");
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void StartEditSubtask_MainLayout(SubtaskModel subtaskToEdit)
+    {
+        currentSubtaskForEdit_MainLayout = new SubtaskModel {
+            Id = subtaskToEdit.Id,
+            TempIdForClientEditing = subtaskToEdit.TempIdForClientEditing == Guid.Empty ? Guid.NewGuid() : subtaskToEdit.TempIdForClientEditing,
+            Name = subtaskToEdit.Name,
+            DueDate = subtaskToEdit.DueDate,
+            Importance = subtaskToEdit.Importance,
+            Context = subtaskToEdit.Context,
+            IsCompleted = subtaskToEdit.IsCompleted,
+            CreatedAt = subtaskToEdit.CreatedAt
+        };
+        isEditingSubtask_MainLayout = true;
+        isSubtaskFormExpanded_MainLayout = true; // Ensure form is visible
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleValidSubtaskSubmit_MainLayout()
+    {
+        if (string.IsNullOrWhiteSpace(currentSubtaskForEdit_MainLayout.Name))
+        {
+            Logger.LogWarning("[MainLayout] Subtask name cannot be empty. Submission halted.");
+            return;
+        }
+
+        if (isEditingSubtask_MainLayout)
+        {
+            var existingSubtask = newTask_MainLayout.Subtasks.FirstOrDefault(s =>
+                (s.TempIdForClientEditing != Guid.Empty && s.TempIdForClientEditing == currentSubtaskForEdit_MainLayout.TempIdForClientEditing) ||
+                (s.Id != 0 && s.Id == currentSubtaskForEdit_MainLayout.Id && currentSubtaskForEdit_MainLayout.Id != 0)
+            );
+
+            if (existingSubtask != null)
+            {
+                existingSubtask.Name = currentSubtaskForEdit_MainLayout.Name;
+                existingSubtask.DueDate = currentSubtaskForEdit_MainLayout.DueDate;
+                existingSubtask.Importance = currentSubtaskForEdit_MainLayout.Importance;
+                existingSubtask.Context = currentSubtaskForEdit_MainLayout.Context;
+                existingSubtask.IsCompleted = currentSubtaskForEdit_MainLayout.IsCompleted;
+            }
+            else
+            {
+                 Logger.LogWarning("[MainLayout] Could not find subtask to update. TempId: {TempId}, Id: {Id}", currentSubtaskForEdit_MainLayout.TempIdForClientEditing, currentSubtaskForEdit_MainLayout.Id);
+            }
+        }
+        else
+        {
+            var newSub = new SubtaskModel
+            {
+                Id = 0,
+                TempIdForClientEditing = Guid.NewGuid(),
+                Name = currentSubtaskForEdit_MainLayout.Name,
+                DueDate = currentSubtaskForEdit_MainLayout.DueDate,
+                Importance = currentSubtaskForEdit_MainLayout.Importance,
+                Context = currentSubtaskForEdit_MainLayout.Context,
+                IsCompleted = false,
+                CreatedAt = DateTime.UtcNow
+            };
+            newTask_MainLayout.Subtasks.Add(newSub);
+        }
+        currentSubtaskForEdit_MainLayout = new SubtaskModel { Importance = 50, TempIdForClientEditing = Guid.NewGuid() };
+        isEditingSubtask_MainLayout = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void CancelSubtaskEdit_MainLayout()
+    {
+        currentSubtaskForEdit_MainLayout = new SubtaskModel { Importance = 50, TempIdForClientEditing = Guid.NewGuid() };
+        isEditingSubtask_MainLayout = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void DeleteSubtask_MainLayout(SubtaskModel subtaskToDelete)
+    {
+        SubtaskModel? itemToRemove = null;
+        if (subtaskToDelete.TempIdForClientEditing != Guid.Empty)
+        {
+            itemToRemove = newTask_MainLayout.Subtasks.FirstOrDefault(s => s.TempIdForClientEditing == subtaskToDelete.TempIdForClientEditing);
+        }
+        else if (subtaskToDelete.Id != 0)
+        {
+            itemToRemove = newTask_MainLayout.Subtasks.FirstOrDefault(s => s.Id == subtaskToDelete.Id && s.Id != 0);
+        }
+
+        if (itemToRemove != null)
+        {
+            newTask_MainLayout.Subtasks.Remove(itemToRemove);
+        }
+        else
+        {
+            Logger.LogWarning("[MainLayout] Subtask to delete not found in newTask_MainLayout.Subtasks. TempId: {TempId}, Id: {Id}", subtaskToDelete.TempIdForClientEditing, subtaskToDelete.Id);
+        }
+
+        if (isEditingSubtask_MainLayout &&
+            ((currentSubtaskForEdit_MainLayout.TempIdForClientEditing != Guid.Empty && currentSubtaskForEdit_MainLayout.TempIdForClientEditing == subtaskToDelete.TempIdForClientEditing) ||
+             (currentSubtaskForEdit_MainLayout.Id != 0 && currentSubtaskForEdit_MainLayout.Id == subtaskToDelete.Id)))
+        {
+            CancelSubtaskEdit_MainLayout();
+        }
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void StartEditingTaskName_MainLayout()
+    {
+        isEditingTaskNameInModal_MainLayout = true;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void FinishEditingTaskName_MainLayout()
+    {
+        isEditingTaskNameInModal_MainLayout = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleTaskNameKeyDown_MainLayout(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            FinishEditingTaskName_MainLayout();
+            // Optionally, could trigger form submission or move focus. For now, just stops editing name.
+        }
+    }
+
+    private void ToggleSubtaskForm_MainLayout()
+    {
+        if (!isEditingSubtask_MainLayout) // Only toggle if not actively editing a subtask (form is forced open then)
+        {
+            isSubtaskFormExpanded_MainLayout = !isSubtaskFormExpanded_MainLayout;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+    
+    private async void HandleOpenAiSuggestionModalRequested_MainLayout(AiTaskSuggestion? suggestion)
+    {
+        Logger.LogInformation("[MainLayout] HandleOpenAiSuggestionModalRequested_MainLayout called.");
+        if (suggestion != null)
+        {
+            await OpenTaskModal_MainLayout(null, suggestion);
+        }
+        else
+        {
+             Logger.LogInformation("[MainLayout] HandleOpenAiSuggestionModalRequested_MainLayout called with null suggestion. Opening standard new task modal.");
+            await OpenTaskModal_MainLayout(null, null); // No task, no suggestion
+        }
+    }
+    // --- Task Modal Methods --- END ---
+}

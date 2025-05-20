@@ -1,0 +1,194 @@
+@page "/completed"
+@inject NavigationManager NavigationManager
+@inject ProductivAI_Blazor.Services.TaskService TaskService
+@inject ILogger<CompletedTasksView> _logger
+@inject IJSRuntime JSRuntime
+@using ProductivAI_Blazor.Models
+
+<PageTitle>Completed Tasks - ProductivAI</PageTitle>
+
+<div class="bg-dark-panel rounded-lg p-8 shadow-lg border border-dark-border">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-6 border-b border-dark-border pb-3">
+        <h2 class="text-lg font-semibold text-dark-text-primary">Completed Tasks</h2>
+        <button class="text-dark-text-secondary hover:text-dark-text-primary" @onclick="GoToActiveTasksView" title="Back to Active Tasks">
+            <i data-lucide="arrow-left-circle" style="width: 24px; height: 24px;"></i>
+        </button>
+    </div>
+
+    <!-- Task List Container -->
+    <div class="flex-grow overflow-y-auto">
+        @if (isLoading)
+        {
+            <p class="text-sm text-dark-text-secondary">Loading completed tasks...</p>
+        }
+        else if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <p class="text-sm text-red-500">Error: @errorMessage</p>
+        }
+        else if (!completedTasks.Any())
+        {
+            <p class="text-sm text-dark-text-secondary">No completed tasks found.</p>
+        }
+        else
+        {
+            <ul class="space-y-4">
+                @foreach (var task in completedTasks.OrderByDescending(t => t.CompletedAt ?? t.UpdatedAt ?? t.CreatedAt))
+                {
+                    <li class="flex items-center justify-between group p-2 bg-dark-input rounded-md border border-dark-border" data-task-id="@task.Id">
+                        <div class="flex items-center space-x-3 flex-1 min-w-0">
+                             <input type="checkbox" class="appearance-none h-4 w-4 border border-gray-400 rounded-full checked:bg-green-500 checked:border-transparent focus:outline-none focus:ring-2 focus:ring-offset-0 focus:ring-green-500 flex-shrink-0"
+                                   id="task-cb-@task.Id" checked="@task.IsCompleted" @onchange="async () => await ToggleTaskCompletion(task)" @onclick:stopPropagation="true" />
+                            <span class="text-sm text-dark-text-secondary line-through truncate" title="@task.Name">
+                                @task.Name
+                            </span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            @if (task.CompletedAt.HasValue)
+                            {
+                                <span class="text-xs text-dark-text-tertiary" title="Completed: @task.CompletedAt.Value.ToString("MMM dd, yyyy HH:mm")">
+                                    <i data-lucide="check-check" class="inline-block mr-1" style="width:12px; height:12px; vertical-align: -0.05em;"></i> @task.CompletedAt.Value.ToString("MMM dd")
+                                </span>
+                            }
+                             <button class="text-dark-text-secondary hover:text-red-400 transition-opacity" @onclick="async () => await HandleDeleteTask(task.Id)" title="Delete Task">
+                                <i data-lucide="trash-2" style="width: 16px; height: 16px;"></i>
+                            </button>
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+</div>
+
+@code {
+    private List<TaskItemModel> completedTasks = new List<TaskItemModel>();
+    private bool isLoading = true;
+    private string? errorMessage = null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadCompletedTasks();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Always try to create icons after any render of this component
+        // This can help catch cases where the DOM is updated by Blazor
+        // and icons need to be re-initialized.
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("appInterop.createLucideIcons");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Error calling appInterop.createLucideIcons in CompletedTasksView OnAfterRenderAsync.");
+        }
+    }
+
+    private async Task LoadCompletedTasks()
+    {
+        isLoading = true;
+        errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var allFetchedTasks = await TaskService.GetTasksAsync(includeCompleted: true);
+            if (allFetchedTasks != null)
+            {
+                completedTasks = allFetchedTasks.Where(t => t.IsCompleted).ToList();
+            }
+            else
+            {
+                completedTasks = new List<TaskItemModel>();
+                // errorMessage = "Failed to load tasks from the server."; // Or rely on service's console logs
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error loading completed tasks in CompletedTasksView.");
+            errorMessage = $"Failed to load completed tasks: {ex.Message}";
+            completedTasks = new List<TaskItemModel>();
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+            try { await JSRuntime.InvokeVoidAsync("appInterop.createLucideIcons"); } catch (Exception ex) { _logger.LogWarning(ex, "Error calling createLucideIcons after LoadCompletedTasks."); }
+        }
+    }
+
+    private async Task ToggleTaskCompletion(TaskItemModel task)
+    {
+        if (isLoading) return;
+        isLoading = true;
+
+        var originalStatus = task.IsCompleted;
+        task.IsCompleted = !task.IsCompleted; 
+
+        StateHasChanged(); 
+
+        bool success = await TaskService.UpdateTaskAsync(task.Id, task);
+        if (success)
+        {
+            // Task marked as incomplete, remove from this list
+            completedTasks.RemoveAll(t => t.Id == task.Id);
+        }
+        else
+        {
+            task.IsCompleted = originalStatus; // Revert on failure
+            errorMessage = "Failed to update task completion status.";
+        }
+        
+        isLoading = false;
+        StateHasChanged();
+        try { await JSRuntime.InvokeVoidAsync("appInterop.createLucideIcons"); } catch (Exception ex) { _logger.LogWarning(ex, "Error calling createLucideIcons after ToggleTaskCompletion."); }
+    }
+
+    private async Task HandleDeleteTask(int taskId)
+    {
+        if (isLoading) return;
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", "Are you sure you want to permanently delete this task? This action cannot be undone.");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        isLoading = true;
+        errorMessage = null; // Clear previous errors
+        StateHasChanged();
+
+        try
+        {
+            bool success = await TaskService.DeleteTaskAsync(taskId);
+            if (success)
+            {
+                completedTasks.RemoveAll(t => t.Id == taskId);
+                _logger.LogInformation("Task {TaskId} successfully deleted.", taskId);
+            }
+            else
+            {
+                errorMessage = "Failed to delete the task. The task may have already been deleted or a server error occurred.";
+                _logger.LogWarning("Failed to delete task {TaskId} via TaskService.", taskId);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during HandleDeleteTask for task {TaskId}", taskId);
+            errorMessage = "An unexpected error occurred while trying to delete the task.";
+        }
+        finally
+        {
+            isLoading = false;
+            StateHasChanged();
+            try { await JSRuntime.InvokeVoidAsync("appInterop.createLucideIcons"); } catch (Exception ex) { _logger.LogWarning(ex, "Error calling createLucideIcons after HandleDeleteTask."); }
+        }
+    }
+
+    private void GoToActiveTasksView()
+    {
+        NavigationManager.NavigateTo("/");
+    }
+} 

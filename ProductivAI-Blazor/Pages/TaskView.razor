@@ -1,0 +1,246 @@
+@page "/"
+@inject NavigationManager NavigationManager
+@inject ProductivAI_Blazor.Services.TaskService TaskService
+@inject ProductivAI_Blazor.Services.ProjectService ProjectService
+@inject OpenRouterService OpenRouterService
+@inject ILogger<TaskView> _logger
+@inject IJSRuntime JSRuntime
+@inject ProductivAI_Blazor.Services.TaskModalService TaskModalService
+@using ProductivAI_Blazor.Models
+@implements IAsyncDisposable
+
+<PageTitle>Tasks - ProductivAI</PageTitle>
+
+<div class="flex space-x-4">
+    <div class="w-full transition-all duration-300 ease-in-out">
+        <div class="bg-dark-panel rounded-lg p-8 shadow-lg border border-dark-border h-full">
+            <!-- Header -->
+            <div class="flex justify-between items-center mb-6 border-b border-dark-border pb-3">
+                <h2 class="text-lg font-semibold text-dark-text-primary">Current Tasks</h2>
+                <div class="flex items-center space-x-4">
+                    <button id="add-task-button-blazor" title="Add New Task (Q)" class="text-dark-text-secondary hover:text-dark-text-primary" @onclick="() => TaskModalService.RequestOpenStandardModal(null)" disabled="@isLoadingTasks">
+                        <i data-lucide="plus" style="width: 24px; height: 24px;"></i>
+                    </button>
+                    <button id="view-completed-button-blazor" title="View Completed Tasks (C)" class="text-dark-text-secondary hover:text-dark-text-primary" @onclick="GoToCompletedTasksView" disabled="@isLoadingTasks">
+                        <i data-lucide="check-circle" style="width: 24px; height: 24px;"></i>
+                    </button>
+                    <button id="start-project-plan-button-blazor" title="Start Project Plan" class="p-1.5 text-dark-text-secondary hover:text-dark-text-primary hover:bg-dark-accent rounded-md transition-colors duration-150" disabled="@isLoadingTasks" @onclick='() => NavigationManager.NavigateTo("/project-planning")'>
+                        <i data-lucide="clipboard-list" style="width: 24px; height: 24px;"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Task List Container -->
+            <div id="task-list-container-blazor" class="flex-grow overflow-y-auto">
+                @if (isLoadingTasks)
+                {
+                    <p class="text-sm text-dark-text-secondary">Loading tasks...</p>
+                }
+                else if (!string.IsNullOrEmpty(errorMessage))
+                {
+                    <p class="text-sm text-red-500">Error: @errorMessage</p>
+                }
+                else if (!activeTasks.Any())
+                {
+                    <p id="no-tasks-message-blazor" class="text-sm text-dark-text-secondary">No active tasks.</p>
+                }
+                else
+                {
+                    <ul class="space-y-4" id="task-list-blazor">
+                        @foreach (var task in activeTasks.OrderByDescending(t => t.Importance).ThenBy(t => t.CreatedAt))
+                        {
+                            <li class="flex items-center justify-between group p-2 hover:bg-dark-input rounded-md border-b border-dark-border last:border-b-0 transition-colors duration-150 cursor-pointer" data-task-id="@task.Id" @onclick="() => TaskModalService.RequestOpenStandardModal(task)">
+                                <div class="flex items-center space-x-3 flex-1 min-w-0">
+                                    <input type="checkbox" class="form-checkbox h-4 w-4 flex-shrink-0"
+                                           id="task-cb-@task.Id" 
+                                           checked="@(_tasksTemporarilyMarkedAsDone.Contains(task.Id) || task.IsCompleted)" 
+                                           @onchange="async () => await ToggleTaskCompletion(task)" 
+                                           @onclick:stopPropagation="true" />
+                                    <label class="text-sm @((_tasksTemporarilyMarkedAsDone.Contains(task.Id) || task.IsCompleted) ? "text-dark-text-secondary line-through" : "text-dark-text-primary") truncate" title="@task.Name">
+                                        @task.Name
+                                    </label>
+                                </div>
+                                <div class="flex items-center space-x-3 flex-shrink-0">
+                                    @if (task.ProjectId.HasValue)
+                                    {
+                                        var project = projects.FirstOrDefault(p => p.Id == task.ProjectId.Value);
+                                        if (project != null)
+                                        {
+                                            <span class="text-xs bg-gray-600 text-gray-200 px-2 py-0.5 rounded-full" title="Project: @project.Name" @onclick:stopPropagation="true">
+                                                @TruncateString(project.Name, 15) 
+                                            </span>
+                                        }
+                                    }
+                                    @if (task.DueDate.HasValue)
+                                    {
+                                        <span class="text-xs text-dark-text-tertiary" title="Due: @task.DueDate.Value.ToString("MMM dd, yyyy")" @onclick:stopPropagation="true"> 
+                                            <i data-lucide="calendar" class="inline-block mr-1" style="width:12px; height:12px; vertical-align: -0.05em;"></i>@task.DueDate.Value.ToString("MMM dd")
+                                        </span>
+                                    }
+                                    <span class="text-xs text-dark-text-tertiary" title="Importance: @task.Importance" @onclick:stopPropagation="true">
+                                        <i data-lucide="bar-chart-2" class="inline-block mr-1" style="width:12px; height:12px; transform: rotate(90deg); vertical-align: -0.05em;"></i>Imp: @task.Importance
+                                    </span>
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private List<TaskItemModel> allTasks = new List<TaskItemModel>();
+    private IEnumerable<TaskItemModel> activeTasks => allTasks.Where(t => !t.IsCompleted && !t.IsIdea);
+    private List<ProjectModel> projects = new List<ProjectModel>();
+    private bool isLoadingTasks = true;
+    private string? errorMessage = null;
+    private HashSet<int> _tasksTemporarilyMarkedAsDone = new HashSet<int>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _logger.LogInformation("[TaskView] OnInitializedAsync started.");
+        isLoadingTasks = true;
+        StateHasChanged();
+
+        try
+        {
+            await LoadProjectsAsync();
+            await LoadTasks();
+            
+            TaskModalService.OnStandardTaskSaved += HandleStandardTaskSaved_TaskView;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TaskView] Error during OnInitializedAsync");
+            errorMessage = "An error occurred while initializing the page.";
+        }
+        finally
+        {
+            isLoadingTasks = false;
+            StateHasChanged();
+            _logger.LogInformation("[TaskView] OnInitializedAsync completed.");
+        }
+        await JSRuntime.InvokeVoidAsync("appInterop.createLucideIcons");
+    }
+
+    private async Task LoadProjectsAsync()
+    {
+        isLoadingTasks = true;
+        try
+        {
+            projects = await ProjectService.GetProjectsAsync() ?? new List<ProjectModel>();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[TaskView] Error loading projects");
+            errorMessage = "Failed to load projects for display.";
+            projects = new List<ProjectModel>();
+        }
+        finally
+        {
+            isLoadingTasks = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadTasks()
+    {
+        _logger.LogInformation("[TaskView] LoadTasks called.");
+        isLoadingTasks = true;
+        try
+        {
+            allTasks = await TaskService.GetTasksAsync(includeCompleted: true) ?? new List<TaskItemModel>();
+            _logger.LogInformation("[TaskView] Loaded {Count} tasks.", allTasks.Count);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"[TaskView] Failed to load tasks: {ex.Message}";
+            _logger.LogError(ex, errorMessage);
+            allTasks = new List<TaskItemModel>();
+        }
+        finally
+        {
+            isLoadingTasks = false;
+            StateHasChanged();
+        }
+    }
+    
+    private async Task ToggleTaskCompletion(TaskItemModel task)
+    {
+        // Prevent re-processing if already in the temporary "done" visual state or already completed.
+        if (_tasksTemporarilyMarkedAsDone.Contains(task.Id) || task.IsCompleted)
+        {
+            return;
+        }
+
+        // Phase 1: Show visual "done" state (green checkbox, strikethrough)
+        // The task remains visible in the 'activeTasks' list because 'task.IsCompleted' is still false.
+        _tasksTemporarilyMarkedAsDone.Add(task.Id);
+        StateHasChanged();
+
+        // Phase 2: Wait for the user to see the visual "done" state
+        await Task.Delay(750); // 0.75 seconds delay
+
+        // Phase 3: Transition from temporary "done" to actual "completed" state
+        _tasksTemporarilyMarkedAsDone.Remove(task.Id); // Clean up temporary state for this task
+
+        var originalDbStateIsCompleted = task.IsCompleted; // Should be false if coming from active tasks
+        task.IsCompleted = true; // Mark as actually completed
+        task.UpdatedAt = DateTime.UtcNow;
+
+        // Trigger a re-render. 'activeTasks' (which filters on '!IsCompleted') will now exclude this task,
+        // causing it to disappear from the list.
+        StateHasChanged();
+
+        // Phase 4: Sync with backend
+        bool success = await TaskService.UpdateTaskAsync(task.Id, task);
+
+        if (!success)
+        {
+            // Revert if backend update failed
+            task.IsCompleted = originalDbStateIsCompleted; // Revert to its state before this operation (e.g., false)
+            task.UpdatedAt = DateTime.UtcNow; // Or restore original UpdatedAt if important
+            errorMessage = "Failed to update task. Task status restored.";
+            // _tasksTemporarilyMarkedAsDone is already cleared.
+            // The task will reappear in the active list (if appropriate) upon the subsequent LoadTasks()
+            // because its IsCompleted status has been reverted.
+        }
+        else
+        {
+            errorMessage = null; // Clear any previous error message on success
+            _logger.LogInformation("Task {TaskId} successfully marked as completed and synced with backend.", task.Id);
+        }
+
+        // Refresh the tasks list from the database.
+        // If successful, the task remains gone. If failed and reverted, it reappears (or error is shown).
+        await LoadTasks();
+        // LoadTasks() handles its own StateHasChanged() and isLoadingTasks management.
+    }
+
+    private string TruncateString(string? value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+        return value.Length <= maxLength ? value : value.Substring(0, maxLength) + "...";
+    }
+
+    private void GoToCompletedTasksView()
+    {
+        NavigationManager.NavigateTo("/completed");
+    }
+
+    private async Task HandleStandardTaskSaved_TaskView(TaskItemModel savedTask)
+    {
+        _logger.LogInformation("[TaskView] Global modal saved task (ID: {SavedTaskId}), reloading tasks.", savedTask.Id);
+        await LoadTasks();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        TaskModalService.OnStandardTaskSaved -= HandleStandardTaskSaved_TaskView;
+        
+        GC.SuppressFinalize(this);
+        await Task.CompletedTask;
+    }
+} 

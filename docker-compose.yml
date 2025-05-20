@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine # Using a specific version like 15 for stability
+    container_name: productivai_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: yourusername # Replace with your desired username
+      POSTGRES_PASSWORD: yourstrongpassword # Replace with your desired strong password
+      POSTGRES_DB: productivaidb # Replace with your desired database name
+    ports:
+      - "5432:5432" # Maps host port 5432 to container port 5432
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yourusername -d productivaidb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    container_name: productivai_server
+    build:
+      context: .
+      dockerfile: ProductivAI.Server/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db: # Service dependency condition
+        condition: service_healthy 
+    ports:
+      - "5186:8080" # Maps host port 5186 to container's Kestrel port 8080 (defined in server Dockerfile)
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development # Or Production
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=productivaidb;Username=yourusername;Password=yourstrongpassword;"
+      # CORS_ORIGINS: "http://localhost:7069" # Example if Blazor app is served on host 7069 and calls API directly
+                                          # This might be needed if not proxying through Nginx and the dev CORS policy in Program.cs is too restrictive for container-to-container.
+                                          # However, the current CORS policy in Program.cs for Development allows any localhost, which should cover direct calls from browser to mapped server port.
+
+  client:
+    container_name: productivai_client
+    build:
+      context: .
+      dockerfile: ProductivAI-Blazor/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "7069:80" # Maps host port 7069 to Nginx's port 80 in the container
+    depends_on:
+      - server # Ensures server is attempted to start first, though client can start independently
+    environment:
+      # Example: If you need to pass the API URL to Nginx/Blazor
+      # NGINX_API_URL: "http://server:8080" # Nginx could use this to configure a proxy, or a script could inject it into Blazor's config
+      # Alternatively, Blazor app's HttpClient should be configured to call the server at its mapped host port (e.g., http://localhost:5186)
+      # or if Nginx proxies, it would call its own origin (e.g., /api)
+      BLAZOR_API_BASE_URL: "http://localhost:5186" # This is for Blazor app running in browser, calling the server on its mapped host port
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      
+volumes:
+  postgres_data: # Defines the named volume for PostgreSQL data persistence 

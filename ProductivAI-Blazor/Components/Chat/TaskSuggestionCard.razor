@@ -1,0 +1,65 @@
+@using ProductivAI_Blazor.Models
+
+@if (Suggestion != null)
+{
+    <div class="mt-3 mb-2 p-0.5 rounded-lg bg-gradient-to-r from-green-400 via-blue-500 to-purple-600 shadow-md">
+        <div class="bg-dark-panel rounded-[calc(0.5rem-2px)] p-3 text-sm">
+            <p class="font-semibold text-blue-300 mb-1">Task Suggestion:</p>
+            <p class="text-white mb-1">
+                <strong class="text-blue-400">Name:</strong> @Suggestion.Name
+            </p>
+            @if (!string.IsNullOrEmpty(Suggestion.AiContext))
+            {
+                <p class="text-xs text-gray-400 mb-1">
+                    <strong class="text-blue-500">Context:</strong> @Suggestion.AiContext
+                </p>
+            }
+            else if (!string.IsNullOrEmpty(Suggestion.ContextDetails))
+            {
+                <p class="text-xs text-gray-400 mb-1">
+                    <strong class="text-blue-500">Details:</strong> @Suggestion.ContextDetails
+                </p>
+            }
+            @if (!string.IsNullOrEmpty(Suggestion.DueDate))
+            {
+                <p class="text-xs text-gray-400 mb-2">
+                    <strong class="text-blue-500">Suggested Due:</strong> @Suggestion.DueDate
+                </p>
+            }
+
+            @if (Suggestion.IsActioned)
+            {
+                <div class="mt-2 flex items-center space-x-2">
+                    <span class="px-2 py-0.5 bg-green-600 text-white text-xs rounded-full font-medium">Added</span>
+                    <button class="px-3 py-1 bg-gray-500 text-white text-xs rounded-md cursor-not-allowed" 
+                            disabled>
+                        Task Added
+                    </button>
+                </div>
+            }
+            else
+            {
+                <button class="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-md focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-50 transition-colors duration-150" 
+                        @onclick="TriggerAddTask">
+                    Add Task
+                </button>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public AiTaskSuggestion? Suggestion { get; set; }
+
+    [Parameter]
+    public EventCallback<AiTaskSuggestion> OnAddTask { get; set; }
+
+    private async Task TriggerAddTask()
+    {
+        if (Suggestion != null && !Suggestion.IsActioned)
+        {
+            await OnAddTask.InvokeAsync(Suggestion);
+        }
+    }
+} 
