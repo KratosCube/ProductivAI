@@ -79,7 +79,7 @@ ProductivAI is a modern, containerized web application with a clear separation o
 
 1. Clone the repository
 ```bash
-git clone https://github.com/yourusername/ProductivAI.git
+git clone https://github.com/KratosCube/ProductivAI.git
 cd ProductivAI
 ```
 
