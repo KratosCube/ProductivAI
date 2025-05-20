@@ -74,6 +74,9 @@ ProductivAI is a modern, containerized web application with a clear separation o
 - Docker and Docker Compose
 - Modern web browser
 - OpenRouter API key
+```bash
+https://openrouter.ai/settings/keys
+```
 
 ### Installation
 
