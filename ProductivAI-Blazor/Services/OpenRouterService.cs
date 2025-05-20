@@ -88,7 +88,7 @@ public class OpenRouterService
     private readonly IJSRuntime _jsRuntime;
     private readonly ILogger<OpenRouterService> _logger;
     private const string OpenRouterApiUrl = "https://openrouter.ai/api/v1/chat/completions";
-    private readonly string _apiKey = "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";
+    private string? _apiKey;
     private const string SiteUrl = "http://localhost"; 
     private const string SiteName = "ProductivAI-Blazor";
     
@@ -121,12 +121,21 @@ public class OpenRouterService
         // new OpenRouterModelInfo { Id = "anthropic/claude-3-haiku-20240307", Name = "Claude 3 Haiku" }, 
     };
 
-    public OpenRouterService(HttpClient httpClient, IJSRuntime jsRuntime, ILogger<OpenRouterService> logger)
+    public OpenRouterService(
+    HttpClient httpClient,
+    IJSRuntime jsRuntime,
+    ILogger<OpenRouterService> logger,
+    IConfiguration configuration)
+{
+    _httpClient = httpClient;
+    _jsRuntime = jsRuntime;
+    _logger = logger;
+    _apiKey = configuration["OpenRouterApiKey"];
+    if (string.IsNullOrEmpty(_apiKey))
     {
-        _httpClient = httpClient;
-        _jsRuntime = jsRuntime;
-        _logger = logger;
+        _logger.LogWarning("OpenRouter API key is not configured!");
     }
+}
 
     public async Task<string?> GetSelectedModelIdAsync()
     {
